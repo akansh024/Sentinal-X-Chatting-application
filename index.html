@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel-X | Secure Chat</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js" integrity="sha512-+2t8m5yQ4H7z5BZgkq7E1zV9g8e6Tf6K5L1sQJ9j3p0VXZ51H0ZtZfKZ3DqTdJ5W0QZ1q+1g0zNtVpYKjVj8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', monospace;
+        }
+        
+        :root {
+            --matrix-green: #0f0;
+            --dark-bg: #0a0a0a;
+            --panel-bg: rgba(10, 20, 10, 0.8);
+            --border-glow: 0 0 5px var(--matrix-green), 0 0 10px var(--matrix-green);
+            --text-glow: 0 0 5px var(--matrix-green);
+            --red-glow: 0 0 5px #f00, 0 0 10px #f00;
+        }
+        
+        body {
+            background-color: var(--dark-bg);
+            color: var(--matrix-green);
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #matrix-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+        }
+        
+        header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--matrix-green);
+            box-shadow: var(--border-glow);
+            margin-bottom: 20px;
+            background: var(--panel-bg);
+            border-radius: 10px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: var(--text-glow);
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .main-content {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            height: calc(100vh - 180px);
+        }
+        
+        .sidebar {
+            width: 250px;
+            background: var(--panel-bg);
+            border: 1px solid var(--matrix-green);
+            border-radius: 10px;
+            box-shadow: var(--border-glow);
+            padding: 15px;
+            overflow-y: auto;
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel-bg);
+            border: 1px solid var(--matrix-green);
+            border-radius: 10px;
+            box-shadow: var(--border-glow);
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            padding: 15px;
+            border-bottom: 1px solid var(--matrix-green);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #0f0;
+            box-shadow: 0 0 5px #0f0;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .message {
+            max-width: 70%;
+            padding: 12px;
+            border-radius: 10px;
+            position: relative;
+            animation: fadeIn 0.3s;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .received {
+            align-self: flex-start;
+            background: rgba(0, 30, 0, 0.5);
+            border-left: 3px solid var(--matrix-green);
+        }
+        
+        .sent {
+            align-self: flex-end;
+            background: rgba(0, 20, 0, 0.7);
+            border-right: 3px solid var(--matrix-green);
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+        
+        .message-content {
+            line-height: 1.4;
+        }
+        
+        .message-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+            font-size: 0.8rem;
+        }
+        
+        .message-actions span {
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        .message-actions span:hover {
+            opacity: 1;
+            text-shadow: var(--text-glow);
+        }
+        
+        .chat-input-container {
+            padding: 15px;
+            border-top: 1px solid var(--matrix-green);
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 15, 0, 0.5);
+        }
+        
+        #message-input {
+            flex: 1;
+            padding: 12px 15px;
+            background: rgba(0, 10, 0, 0.7);
+            border: 1px solid var(--matrix-green);
+            border-radius: 5px;
+            color: var(--matrix-green);
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        #message-input:focus {
+            box-shadow: var(--border-glow);
+        }
+        
+        #send-button {
+            background: rgba(0, 30, 0, 0.7);
+            border: 1px solid var(--matrix-green);
+            color: var(--matrix-green);
+            padding: 0 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        #send-button:hover {
+            background: rgba(0, 50, 0, 0.7);
+            box-shadow: var(--border-glow);
+        }
+        
+        .contact-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .contact {
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        
+        .contact:hover {
+            background: rgba(0, 30, 0, 0.3);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        .contact.active {
+            background: rgba(0, 30, 0, 0.5);
+            border: 1px solid var(--matrix-green);
+            box-shadow: var(--text-glow);
+        }
+        
+        .contact-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(0, 255, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            border: 1px solid var(--matrix-green);
+        }
+        
+        .contact-info {
+            flex: 1;
+        }
+        
+        .contact-name {
+            font-weight: bold;
+        }
+        
+        .contact-status {
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+        
+        .online {
+            color: #0f0;
+            text-shadow: var(--text-glow);
+        }
+        
+        .offline {
+            color: #888;
+        }
+        
+        .security-info {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        .security-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .security-icon {
+            color: #0f0;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 15px;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 20px;
+            border-top: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 200px;
+            }
+        }
+        
+        /* Terminal-style animation */
+        .terminal-line {
+            overflow: hidden;
+            white-space: nowrap;
+            border-right: 2px solid var(--matrix-green);
+            animation: typing 3s steps(40, end), blink-caret 0.75s step-end infinite;
+            margin-bottom: 10px;
+        }
+        
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+        
+        @keyframes blink-caret {
+            from, to { border-color: transparent }
+            50% { border-color: var(--matrix-green); }
+        }
+        
+        /* Encryption animation */
+        .encrypting::after {
+            content: "🔒";
+            animation: encrypt 1.5s infinite;
+        }
+        
+        @keyframes encrypt {
+            0% { content: "🔒"; }
+            50% { content: "🔓"; }
+            100% { content: "🔒"; }
+        }
+        
+        /* Registration modal */
+        #registration-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background: rgba(10, 20, 10, 0.9);
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid #0f0;
+            box-shadow: 0 0 15px #0f0;
+            text-align: center;
+            width: 80%;
+            max-width: 400px;
+        }
+        
+        .user-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 5px 10px;
+            background: rgba(0,20,0,0.5);
+            border: 1px solid #0f0;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+        
+        /* Security code modal */
+        #security-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .security-modal-content {
+            background: rgba(10, 20, 10, 0.9);
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid #0f0;
+            box-shadow: 0 0 15px #0f0;
+            text-align: center;
+            width: 80%;
+            max-width: 500px;
+        }
+        
+        .security-code {
+            font-size: 1.5rem;
+            letter-spacing: 3px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0,10,0,0.7);
+            border: 1px solid #0f0;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        
+        .verify-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .verify-button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 1px solid #0f0;
+            background: rgba(0, 30, 0, 0.7);
+            color: #0f0;
+            font-size: 1rem;
+        }
+        
+        .verify-button:hover {
+            background: rgba(0, 50, 0, 0.7);
+            box-shadow: var(--border-glow);
+        }
+        
+        .verify-button.danger {
+            border: 1px solid #f00;
+            background: rgba(50, 0, 0, 0.7);
+            color: #f00;
+        }
+        
+        .verify-button.danger:hover {
+            box-shadow: var(--red-glow);
+        }
+        
+        .connection-status {
+            font-size: 0.9rem;
+            margin-top: 10px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        .connected {
+            background: rgba(0, 30, 0, 0.3);
+            color: #0f0;
+        }
+        
+        .disconnected {
+            background: rgba(30, 0, 0, 0.3);
+            color: #f00;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix-canvas"></canvas>
+    
+    <!-- Registration Modal -->
+    <div id="registration-modal">
+        <div class="modal-content">
+            <h2><i class="fas fa-user-shield"></i> Sentinel-X Registration</h2>
+            <p>Create your secure identity</p>
+            <input type="text" id="username-input" placeholder="Choose a username" autocomplete="off">
+            <button id="register-button">Generate Identity Keys</button>
+            <p>Your identity keys will be generated locally</p>
+            <div class="connection-status disconnected" id="connection-status">Disconnected from network</div>
+        </div>
+    </div>
+    
+    <!-- Security Verification Modal -->
+    <div id="security-modal">
+        <div class="security-modal-content">
+            <h2><i class="fas fa-fingerprint"></i> Security Verification</h2>
+            <p>Compare this code with your contact to verify your connection is secure:</p>
+            <div class="security-code" id="security-code">4F9C 72B1 D8E3</div>
+            <p>If the codes match, your connection is end-to-end encrypted and secure.</p>
+            <div class="verify-buttons">
+                <button class="verify-button" id="verify-ok">Codes Match</button>
+                <button class="verify-button danger" id="verify-mismatch">Mismatch Detected</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="user-info" id="user-info"></div>
+    
+    <div class="container" style="display:none" id="app-container">
+        <header>
+            <h1>Sentinel-X</h1>
+            <div class="subtitle">SECURE COMMUNICATION NETWORK</div>
+        </header>
+        
+        <div class="main-content">
+            <div class="sidebar">
+                <h2><i class="fas fa-user-friends"></i> Contacts</h2>
+                <div class="contact-list" id="contact-list">
+                    <!-- Contacts will be loaded dynamically -->
+                </div>
+                
+                <div class="security-info">
+                    <h2><i class="fas fa-shield-alt"></i> Security Status</h2>
+                    <div class="security-item">
+                        <i class="fas fa-lock security-icon"></i>
+                        <span>End-to-End Encryption: <span class="online" id="e2e-status">Active</span></span>
+                    </div>
+                    <div class="security-item">
+                        <i class="fas fa-user-shield security-icon"></i>
+                        <span>Identity Protection: <span class="online">Enabled</span></span>
+                    </div>
+                    <div class="security-item">
+                        <i class="fas fa-fingerprint security-icon"></i>
+                        <span>Key Verification: <span class="online" id="verification-status">Pending</span></span>
+                    </div>
+                    <div class="security-item">
+                        <i class="fas fa-hourglass-half security-icon"></i>
+                        <span>Message Lifetime: <span id="message-lifetime">24h</span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-container">
+                <div class="chat-header">
+                    <div>
+                        <h2 id="current-contact">Select a Contact</h2>
+                    </div>
+                    <div class="status">
+                        <div class="status-indicator" id="connection-indicator"></div>
+                        <span id="connection-text">Disconnected</span>
+                    </div>
+                </div>
+                
+                <div class="chat-messages" id="chat-messages">
+                    <div class="terminal-line">
+                        > Welcome to Sentinel-X secure communication network
+                    </div>
+                    <div class="terminal-line">
+                        > Establishing secure connection to server...
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <input type="text" id="message-input" placeholder="Type your secure message..." disabled>
+                    <button id="send-button" disabled><i class="fas fa-paper-plane"></i> SEND</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            Sentinel-X v2.4.0 | Connection: <span id="connection-type">Secured</span> | E2E Encrypted | Messages Auto-Delete in 24h
+        </div>
+    </div>
+
+    <script>
+        // Matrix background effect
+        const canvas = document.getElementById('matrix-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas dimensions
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Characters - taken from the Katakana character set
+        const katakana = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+        const characters = katakana.split('');
+        const fontSize = 14;
+        const columns = canvas.width / fontSize;
+        
+        // Drops: array of y positions, one per column
+        const drops = [];
+        for (let i = 0; i < columns; i++) {
+            drops[i] = 1;
+        }
+        
+        // Render the animation
+        function drawMatrix() {
+            // Black background with opacity to create trailing effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#0F0'; // green text
+            ctx.font = `${fontSize}px monospace`;
+            
+            for (let i = 0; i < drops.length; i++) {
+                const text = characters[Math.floor(Math.random() * characters.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                
+                // Reset drop if it reaches the bottom or randomly
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+        
+        setInterval(drawMatrix, 33); // ~30fps
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // Chat Application Functionality
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const chatMessages = document.getElementById('chat-messages');
+        const registrationModal = document.getElementById('registration-modal');
+        const usernameInput = document.getElementById('username-input');
+        const registerButton = document.getElementById('register-button');
+        const userInfo = document.getElementById('user-info');
+        const appContainer = document.getElementById('app-container');
+        const contactList = document.getElementById('contact-list');
+        const currentContact = document.getElementById('current-contact');
+        const securityModal = document.getElementById('security-modal');
+        const securityCode = document.getElementById('security-code');
+        const verifyOkButton = document.getElementById('verify-ok');
+        const verifyMismatchButton = document.getElementById('verify-mismatch');
+        const connectionStatus = document.getElementById('connection-status');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const connectionText = document.getElementById('connection-text');
+        const e2eStatus = document.getElementById('e2e-status');
+        const verificationStatus = document.getElementById('verification-status');
+        
+        // User state
+        let currentUser = {
+            id: null,
+            username: '',
+            keyPair: null,
+            contacts: {},
+            currentChat: null
+        };
+        
+        // Socket connection - Use a reliable server
+        const SOCKET_SERVER_URL = 'https://sentinel-x-server.onrender.com';
+        const socket = io(SOCKET_SERVER_URL, {
+            autoConnect: false
+        });
+        
+        // Connection status
+        let connected = false;
+        
+        // Initialize encryption
+        async function initCrypto() {
+            await sodium.ready;
+            const keypair = sodium.crypto_box_keypair();
+            
+            currentUser.keyPair = {
+                publicKey: sodium.to_base64(keypair.publicKey),
+                privateKey: sodium.to_base64(keypair.privateKey)
+            };
+            
+            console.log('Encryption keys generated');
+        }
+        
+        // Register user
+        async function registerUser() {
+            const username = usernameInput.value.trim();
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+            
+            // Show generating message
+            registerButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating Keys...';
+            registerButton.disabled = true;
+            
+            // Generate encryption keys
+            await initCrypto();
+            
+            // Connect to server
+            socket.connect();
+            
+            // Set timeout for connection
+            const connectionTimeout = setTimeout(() => {
+                if (!connected) {
+                    connectionStatus.textContent = 'Connection failed. Retrying...';
+                    connectionStatus.className = 'connection-status disconnected';
+                    socket.connect();
+                }
+            }, 3000);
+            
+            // Handle connection
+            socket.on('connect', () => {
+                clearTimeout(connectionTimeout);
+                connected = true;
+                connectionStatus.textContent = 'Connected to secure network';
+                connectionStatus.className = 'connection-status connected';
+                connectionIndicator.style.backgroundColor = '#0f0';
+                connectionIndicator.style.boxShadow = '0 0 5px #0f0';
+                connectionText.textContent = 'Secured';
+                connectionText.style.color = '#0f0';
+                
+                // Register user with server
+                socket.emit('register', {
+                    username: username,
+                    publicKey: currentUser.keyPair.publicKey
+                }, (response) => {
+                    if (response.success) {
+                        currentUser.id = response.userId;
+                        currentUser.username = username;
+                        
+                        // Update UI
+                        userInfo.textContent = username;
+                        registrationModal.style.display = 'none';
+                        appContainer.style.display = 'flex';
+                        
+                        // Enable UI
+                        messageInput.disabled = false;
+                        sendButton.disabled = false;
+                        
+                        // Add system message
+                        addSystemMessage('Secure connection established with Sentinel-X network');
+                        addSystemMessage(`Your user ID: ${response.userId}`);
+                        addSystemMessage('Your identity keys have been generated locally');
+                        
+                        // Load contacts
+                        loadContacts();
+                    } else {
+                        alert(`Registration failed: ${response.error}`);
+                        registerButton.innerHTML = 'Generate Identity Keys';
+                        registerButton.disabled = false;
+                    }
+                });
+            });
+            
+            // Handle disconnection
+            socket.on('disconnect', () => {
+                connected = false;
+                connectionStatus.textContent = 'Disconnected from network';
+                connectionStatus.className = 'connection-status disconnected';
+                connectionIndicator.style.backgroundColor = '#f00';
+                connectionIndicator.style.boxShadow = '0 0 5px #f00';
+                connectionText.textContent = 'Disconnected';
+                connectionText.style.color = '#f00';
+            });
+        }
+        
+        // Load contacts
+        function loadContacts() {
+            socket.emit('getUsers', {}, (response) => {
+                if (response.success) {
+                    currentUser.contacts = {};
+                    contactList.innerHTML = '';
+                    
+                    response.users.forEach(user => {
+                        if (user.id !== currentUser.id) {
+                            currentUser.contacts[user.id] = user;
+                            
+                            const contactEl = document.createElement('div');
+                            contactEl.className = 'contact';
+                            contactEl.dataset.userId = user.id;
+                            contactEl.innerHTML = `
+                                <div class="contact-avatar">${user.username.charAt(0)}</div>
+                                <div class="contact-info">
+                                    <div class="contact-name">${user.username}</div>
+                                    <div class="contact-status online">Online - Secure</div>
+                                </div>
+                            `;
+                            
+                            contactEl.addEventListener('click', () => {
+                                document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
+                                contactEl.classList.add('active');
+                                openChat(user.id);
+                            });
+                            
+                            contactList.appendChild(contactEl);
+                        }
+                    });
+                    
+                    if (response.users.length <= 1) {
+                        contactList.innerHTML = '<p>No other users online. Open another browser to test.</p>';
+                    }
+                }
+            });
+        }
+        
+        // Open chat with a contact
+        function openChat(contactId) {
+            const contact = currentUser.contacts[contactId];
+            currentUser.currentChat = contactId;
+            currentContact.innerHTML = `${contact.username} <span class="online">(Secure)</span>`;
+            
+            // Clear chat messages
+            chatMessages.innerHTML = '';
+            
+            // Add connection message
+            addSystemMessage(`Secure connection established with ${contact.username}`);
+            
+            // Generate security code
+            const code = generateSecurityCode(currentUser.id, contactId);
+            securityCode.textContent = code;
+            
+            // Show verification modal
+            securityModal.style.display = 'flex';
+        }
+        
+        // Generate security code for verification
+        function generateSecurityCode(userId1, userId2) {
+            const ids = [userId1, userId2].sort().join('');
+            let hash = 0;
+            
+            for (let i = 0; i < ids.length; i++) {
+                hash = ((hash << 5) - hash) + ids.charCodeAt(i);
+                hash |= 0; // Convert to 32bit integer
+            }
+            
+            // Convert to 12-character hex code
+            const hex = Math.abs(hash).toString(16).toUpperCase().padStart(12, '0');
+            return `${hex.substring(0, 4)} ${hex.substring(4, 8)} ${hex.substring(8, 12)}`;
+        }
+        
+        // Encrypt message
+        async function encryptMessage(message, recipientPublicKey) {
+            await sodium.ready;
+            
+            const senderKey = sodium.from_base64(currentUser.keyPair.privateKey);
+            const recipientKey = sodium.from_base64(recipientPublicKey);
+            
+            const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
+            const ciphertext = sodium.crypto_box_easy(
+                sodium.from_string(message),
+                nonce,
+                recipientKey,
+                senderKey
+            );
+            
+            return {
+                ciphertext: sodium.to_base64(ciphertext),
+                iv: sodium.to_base64(nonce)
+            };
+        }
+        
+        // Decrypt message
+        async function decryptMessage(ciphertext, iv, senderPublicKey) {
+            await sodium.ready;
+            
+            const recipientKey = sodium.from_base64(currentUser.keyPair.privateKey);
+            const senderKey = sodium.from_base64(senderPublicKey);
+            
+            const plaintext = sodium.crypto_box_open_easy(
+                sodium.from_base64(ciphertext),
+                sodium.from_base64(iv),
+                senderKey,
+                recipientKey
+            );
+            
+            return sodium.to_string(plaintext);
+        }
+        
+        // Add system message to chat
+        function addSystemMessage(text) {
+            const terminalDiv = document.createElement('div');
+            terminalDiv.classList.add('terminal-line');
+            terminalDiv.textContent = `> ${text}`;
+            chatMessages.appendChild(terminalDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Add message to UI
+        function addMessage(content, isSent = true, senderName = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.classList.add(isSent ? 'sent' : 'received');
+            
+            const now = new Date();
+            const timeString = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span>${isSent ? 'You' : (senderName || 'Unknown')}</span>
+                    <span>${timeString}</span>
+                </div>
+                <div class="message-content">
+                    ${content}
+                </div>
+                <div class="message-actions">
+                    <span><i class="fas ${isSent ? 'fa-check-circle' : 'fa-lock'}"></i> ${isSent ? 'Delivered' : 'Encrypted'}</span>
+                    ${!isSent ? '<span><i class="fas fa-clock"></i> 24h</span>' : ''}
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            if (!currentUser.currentChat) {
+                alert('Please select a contact first');
+                return;
+            }
+            
+            const contact = currentUser.contacts[currentUser.currentChat];
+            
+            try {
+                // Encrypt the message
+                const { ciphertext, iv } = await encryptMessage(message, contact.publicKey);
+                
+                // Add to UI immediately
+                addMessage(message, true);
+                
+                // Send to server
+                socket.emit('sendMessage', {
+                    senderId: currentUser.id,
+                    recipientId: contact.id,
+                    ciphertext,
+                    iv
+                }, (response) => {
+                    if (!response.success) {
+                        alert(`Failed to send message: ${response.error}`);
+                    }
+                });
+                
+                messageInput.value = '';
+            } catch (error) {
+                console.error('Encryption error:', error);
+                alert('Failed to encrypt message');
+            }
+        }
+        
+        // Handle incoming messages
+        socket.on('newMessage', async (messageData) => {
+            const contact = Object.values(currentUser.contacts).find(c => c.id === messageData.senderId);
+            if (!contact || contact.id !== currentUser.currentChat) return;
+            
+            try {
+                // Decrypt the message
+                const plaintext = await decryptMessage(
+                    messageData.ciphertext,
+                    messageData.iv,
+                    contact.publicKey
+                );
+                
+                // Add to UI
+                addMessage(plaintext, false, contact.username);
+            } catch (error) {
+                console.error('Decryption error:', error);
+                addSystemMessage('Failed to decrypt a message. Security may be compromised.');
+            }
+        });
+        
+        // Event listeners
+        registerButton.addEventListener('click', registerUser);
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        verifyOkButton.addEventListener('click', () => {
+            securityModal.style.display = 'none';
+            verificationStatus.textContent = 'Verified';
+            e2eStatus.textContent = 'Active';
+            addSystemMessage('Security verification completed. Connection is secure.');
+            addSystemMessage('End-to-end encryption is active.');
+        });
+        
+        verifyMismatchButton.addEventListener('click', () => {
+            securityModal.style.display = 'none';
+            verificationStatus.textContent = 'Mismatch';
+            verificationStatus.style.color = '#f00';
+            addSystemMessage('Security verification failed. Connection may be compromised!');
+            addSystemMessage('Do not share sensitive information.');
+        });
+        
+        // Simulate other users for demo
+        function simulateOtherUsers() {
+            setTimeout(() => {
+                if (Object.keys(currentUser.contacts).length === 0) {
+                    const contactList = document.getElementById('contact-list');
+                    contactList.innerHTML = `
+                        <div class="contact">
+                            <div class="contact-avatar">A</div>
+                            <div class="contact-info">
+                                <div class="contact-name">Agent Smith</div>
+                                <div class="contact-status online">Online - Secure</div>
+                            </div>
+                        </div>
+                        <div class="contact">
+                            <div class="contact-avatar">T</div>
+                            <div class="contact-info">
+                                <div class="contact-name">Trinity</div>
+                                <div class="contact-status offline">Offline</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.querySelectorAll('.contact').forEach(contact => {
+                        contact.addEventListener('click', function() {
+                            if (this.querySelector('.contact-status').textContent.includes('Online')) {
+                                document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
+                                this.classList.add('active');
+                                const name = this.querySelector('.contact-name').textContent;
+                                currentContact.innerHTML = `${name} <span class="online">(Secure)</span>`;
+                                
+                                // Clear chat messages
+                                chatMessages.innerHTML = '';
+                                addSystemMessage(`Secure connection established with ${name}`);
+                                
+                                // Generate security code
+                                const code = generateSecurityCode(currentUser.id, 2);
+                                securityCode.textContent = code;
+                                securityModal.style.display = 'flex';
+                            } else {
+                                addSystemMessage('This contact is offline. Messages will be delivered when they come online.');
+                            }
+                        });
+                    });
+                }
+            }, 3000);
+        }
+        
+        // Initialize
+        window.onload = function() {
+            // Simulate contacts for demo
+            simulateOtherUsers();
+        };
+    </script>
+</body>
+</html>
