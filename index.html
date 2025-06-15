@@ -6,7 +6,8 @@
     <title>Sentinel-X | Secure Chat</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js" integrity="sha512-+2t8m5yQ4H7z5BZgkq7E1zV9g8e6Tf6K5L1sQJ9j3p0VXZ51H0ZtZfKZ3DqTdJ5W0QZ1q+1g0zNtVpYKjVj8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Fixed Libsodium URL -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -169,6 +170,8 @@
         
         .message-content {
             line-height: 1.4;
+            white-space: pre-wrap; /* Preserve line breaks */
+            word-break: break-word; /* Prevent long text overflow */
         }
         
         .message-actions {
@@ -383,6 +386,38 @@
             max-width: 400px;
         }
         
+        .modal-content input {
+            width: 100%;
+            padding: 10px;
+            margin: 15px 0;
+            background: rgba(0, 10, 0, 0.7);
+            border: 1px solid var(--matrix-green);
+            border-radius: 5px;
+            color: var(--matrix-green);
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .modal-content input:focus {
+            box-shadow: var(--border-glow);
+        }
+        
+        .modal-content button {
+            background: rgba(0, 30, 0, 0.7);
+            border: 1px solid var(--matrix-green);
+            color: var(--matrix-green);
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+        }
+        
+        .modal-content button:hover {
+            background: rgba(0, 50, 0, 0.7);
+            box-shadow: var(--border-glow);
+        }
+        
         .user-info {
             position: absolute;
             top: 20px;
@@ -479,6 +514,29 @@
             background: rgba(30, 0, 0, 0.3);
             color: #f00;
         }
+        
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 255, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #0f0;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Error message */
+        .error-message {
+            color: #f00;
+            text-shadow: 0 0 5px #f00;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -493,6 +551,7 @@
             <button id="register-button">Generate Identity Keys</button>
             <p>Your identity keys will be generated locally</p>
             <div class="connection-status disconnected" id="connection-status">Disconnected from network</div>
+            <div id="crypto-status" class="error-message"></div>
         </div>
     </div>
     
@@ -648,6 +707,7 @@
         const connectionText = document.getElementById('connection-text');
         const e2eStatus = document.getElementById('e2e-status');
         const verificationStatus = document.getElementById('verification-status');
+        const cryptoStatus = document.getElementById('crypto-status');
         
         // User state
         let currentUser = {
@@ -658,8 +718,8 @@
             currentChat: null
         };
         
-        // Socket connection - Use a reliable server
-        const SOCKET_SERVER_URL = 'https://sentinel-x-server.onrender.com';
+        // Socket connection - Use the updated Render server URL
+        const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
         const socket = io(SOCKET_SERVER_URL, {
             autoConnect: false
         });
@@ -669,15 +729,30 @@
         
         // Initialize encryption
         async function initCrypto() {
-            await sodium.ready;
-            const keypair = sodium.crypto_box_keypair();
-            
-            currentUser.keyPair = {
-                publicKey: sodium.to_base64(keypair.publicKey),
-                privateKey: sodium.to_base64(keypair.privateKey)
-            };
-            
-            console.log('Encryption keys generated');
+            try {
+                // Check if sodium is already loaded
+                if (typeof sodium === 'undefined') {
+                    throw new Error('Libsodium not loaded');
+                }
+                
+                await sodium.ready;
+                
+                // Create keypair
+                const keypair = sodium.crypto_box_keypair();
+                
+                currentUser.keyPair = {
+                    publicKey: sodium.to_base64(keypair.publicKey),
+                    privateKey: sodium.to_base64(keypair.privateKey)
+                };
+                
+                console.log('Encryption keys generated');
+                cryptoStatus.textContent = '';
+                return true;
+            } catch (error) {
+                console.error('Crypto initialization error:', error);
+                cryptoStatus.textContent = 'Error: Encryption library failed to load. Check your connection.';
+                return false;
+            }
         }
         
         // Register user
@@ -689,11 +764,17 @@
             }
             
             // Show generating message
-            registerButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating Keys...';
+            registerButton.innerHTML = '<span class="spinner"></span> Generating Keys...';
             registerButton.disabled = true;
             
             // Generate encryption keys
-            await initCrypto();
+            const cryptoSuccess = await initCrypto();
+            
+            if (!cryptoSuccess) {
+                registerButton.innerHTML = 'Generate Identity Keys';
+                registerButton.disabled = false;
+                return;
+            }
             
             // Connect to server
             socket.connect();
@@ -714,7 +795,7 @@
                 connectionStatus.textContent = 'Connected to secure network';
                 connectionStatus.className = 'connection-status connected';
                 connectionIndicator.style.backgroundColor = '#0f0';
-                connectionIndicator.style.boxShadow = '0 0 5px #0f0';
+                connectionIndicator.style.boxShadow = '0 0 5px #0f0, 0 0 10px #0f0';
                 connectionText.textContent = 'Secured';
                 connectionText.style.color = '#0f0';
                 
@@ -757,9 +838,16 @@
                 connectionStatus.textContent = 'Disconnected from network';
                 connectionStatus.className = 'connection-status disconnected';
                 connectionIndicator.style.backgroundColor = '#f00';
-                connectionIndicator.style.boxShadow = '0 0 5px #f00';
+                connectionIndicator.style.boxShadow = '0 0 5px #f00, 0 0 10px #f00';
                 connectionText.textContent = 'Disconnected';
                 connectionText.style.color = '#f00';
+            });
+            
+            // Handle connection error
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                connectionStatus.textContent = 'Connection error. Retrying...';
+                connectionStatus.className = 'connection-status disconnected';
             });
         }
         
@@ -795,9 +883,13 @@
                         }
                     });
                     
+                    // If no contacts, simulate demo contacts
                     if (response.users.length <= 1) {
-                        contactList.innerHTML = '<p>No other users online. Open another browser to test.</p>';
+                        simulateOtherUsers();
                     }
+                } else {
+                    // If no real contacts, simulate demo contacts
+                    simulateOtherUsers();
                 }
             });
         }
@@ -805,6 +897,8 @@
         // Open chat with a contact
         function openChat(contactId) {
             const contact = currentUser.contacts[contactId];
+            if (!contact) return;
+            
             currentUser.currentChat = contactId;
             currentContact.innerHTML = `${contact.username} <span class="online">(Secure)</span>`;
             
@@ -820,6 +914,12 @@
             
             // Show verification modal
             securityModal.style.display = 'flex';
+            
+            // Add demo-specific security warning
+            if (contactId.startsWith('demo')) {
+                addSystemMessage('DEMO MODE: Security verification is simulated');
+                addSystemMessage('In production, compare codes with your contact');
+            }
         }
         
         // Generate security code for verification
@@ -839,40 +939,50 @@
         
         // Encrypt message
         async function encryptMessage(message, recipientPublicKey) {
-            await sodium.ready;
-            
-            const senderKey = sodium.from_base64(currentUser.keyPair.privateKey);
-            const recipientKey = sodium.from_base64(recipientPublicKey);
-            
-            const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
-            const ciphertext = sodium.crypto_box_easy(
-                sodium.from_string(message),
-                nonce,
-                recipientKey,
-                senderKey
-            );
-            
-            return {
-                ciphertext: sodium.to_base64(ciphertext),
-                iv: sodium.to_base64(nonce)
-            };
+            try {
+                await sodium.ready;
+                
+                const senderKey = sodium.from_base64(currentUser.keyPair.privateKey);
+                const recipientKey = sodium.from_base64(recipientPublicKey);
+                
+                const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
+                const ciphertext = sodium.crypto_box_easy(
+                    sodium.from_string(message),
+                    nonce,
+                    recipientKey,
+                    senderKey
+                );
+                
+                return {
+                    ciphertext: sodium.to_base64(ciphertext),
+                    iv: sodium.to_base64(nonce)
+                };
+            } catch (error) {
+                console.error('Encryption error:', error);
+                throw new Error('Failed to encrypt message');
+            }
         }
         
         // Decrypt message
         async function decryptMessage(ciphertext, iv, senderPublicKey) {
-            await sodium.ready;
-            
-            const recipientKey = sodium.from_base64(currentUser.keyPair.privateKey);
-            const senderKey = sodium.from_base64(senderPublicKey);
-            
-            const plaintext = sodium.crypto_box_open_easy(
-                sodium.from_base64(ciphertext),
-                sodium.from_base64(iv),
-                senderKey,
-                recipientKey
-            );
-            
-            return sodium.to_string(plaintext);
+            try {
+                await sodium.ready;
+                
+                const recipientKey = sodium.from_base64(currentUser.keyPair.privateKey);
+                const senderKey = sodium.from_base64(senderPublicKey);
+                
+                const plaintext = sodium.crypto_box_open_easy(
+                    sodium.from_base64(ciphertext),
+                    sodium.from_base64(iv),
+                    senderKey,
+                    recipientKey
+                );
+                
+                return sodium.to_string(plaintext);
+            } catch (error) {
+                console.error('Decryption error:', error);
+                throw new Error('Failed to decrypt message');
+            }
         }
         
         // Add system message to chat
@@ -881,7 +991,7 @@
             terminalDiv.classList.add('terminal-line');
             terminalDiv.textContent = `> ${text}`;
             chatMessages.appendChild(terminalDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom();
         }
         
         // Add message to UI
@@ -908,6 +1018,11 @@
             `;
             
             chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        // Scroll to bottom of chat
+        function scrollToBottom() {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
         
@@ -923,6 +1038,29 @@
             
             const contact = currentUser.contacts[currentUser.currentChat];
             
+            // For demo contacts
+            if (contact.id.startsWith('demo')) {
+                // Add to UI immediately
+                addMessage(message, true);
+                
+                // Simulate response after delay
+                setTimeout(() => {
+                    if (contact.username === 'Agent Smith') {
+                        addMessage("Your attempts to escape the Matrix are futile, Mr. Anderson.", false, contact.username);
+                    } else if (contact.username === 'Trinity') {
+                        addMessage("Follow the white rabbit. Knock knock, Neo.", false, contact.username);
+                    } else if (contact.username === 'Morpheus') {
+                        addMessage("Free your mind. Take the red pill.", false, contact.username);
+                    } else {
+                        addMessage("This is a simulated response in demo mode.", false, contact.username);
+                    }
+                }, 1500);
+                
+                messageInput.value = '';
+                return;
+            }
+            
+            // For real contacts
             try {
                 // Encrypt the message
                 const { ciphertext, iv } = await encryptMessage(message, contact.publicKey);
@@ -938,14 +1076,14 @@
                     iv
                 }, (response) => {
                     if (!response.success) {
-                        alert(`Failed to send message: ${response.error}`);
+                        addSystemMessage(`Failed to send message: ${response.error}`);
                     }
                 });
                 
                 messageInput.value = '';
             } catch (error) {
                 console.error('Encryption error:', error);
-                alert('Failed to encrypt message');
+                addSystemMessage('Failed to encrypt message. Security compromised!');
             }
         }
         
@@ -969,6 +1107,54 @@
                 addSystemMessage('Failed to decrypt a message. Security may be compromised.');
             }
         });
+        
+        // Simulate other users for demo
+        function simulateOtherUsers() {
+            const demoContacts = [
+                { id: 'demo1', username: 'Agent Smith', publicKey: 'demo_public_key_1' },
+                { id: 'demo2', username: 'Trinity', publicKey: 'demo_public_key_2' },
+                { id: 'demo3', username: 'Morpheus', publicKey: 'demo_public_key_3' }
+            ];
+
+            contactList.innerHTML = '';
+
+            demoContacts.forEach(contact => {
+                currentUser.contacts[contact.id] = contact;
+
+                const contactEl = document.createElement('div');
+                contactEl.className = 'contact';
+                contactEl.dataset.userId = contact.id;
+                contactEl.innerHTML = `
+                    <div class="contact-avatar">${contact.username.charAt(0)}</div>
+                    <div class="contact-info">
+                        <div class="contact-name">${contact.username}</div>
+                        <div class="contact-status online">Online - Secure</div>
+                    </div>
+                `;
+
+                contactEl.addEventListener('click', () => {
+                    document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
+                    contactEl.classList.add('active');
+                    openChat(contact.id);
+                    
+                    // Add welcome message from demo contact
+                    setTimeout(() => {
+                        if (contact.username === 'Agent Smith') {
+                            addMessage("Welcome to Sentinel-X, Mr. Anderson. We've been expecting you.", false, contact.username);
+                        } else if (contact.username === 'Trinity') {
+                            addMessage("I've been watching you, Neo. The system has you.", false, contact.username);
+                        } else if (contact.username === 'Morpheus') {
+                            addMessage("You take the blue pill, the story ends. You take the red pill...", false, contact.username);
+                        }
+                    }, 1000);
+                });
+
+                contactList.appendChild(contactEl);
+            });
+            
+            addSystemMessage('DEMO MODE: Simulated contacts are active');
+            addSystemMessage('In production, real contacts will appear here');
+        }
         
         // Event listeners
         registerButton.addEventListener('click', registerUser);
@@ -995,57 +1181,20 @@
             addSystemMessage('Do not share sensitive information.');
         });
         
-        // Simulate other users for demo
-        function simulateOtherUsers() {
+        // Initialize demo contacts if no real ones
+        window.onload = function() {
+            // Add loading animation for crypto
+            const cryptoStatus = document.getElementById('crypto-status');
+            cryptoStatus.innerHTML = '<span class="spinner"></span> Loading encryption library...';
+            
+            // Check if sodium is available
             setTimeout(() => {
-                if (Object.keys(currentUser.contacts).length === 0) {
-                    const contactList = document.getElementById('contact-list');
-                    contactList.innerHTML = `
-                        <div class="contact">
-                            <div class="contact-avatar">A</div>
-                            <div class="contact-info">
-                                <div class="contact-name">Agent Smith</div>
-                                <div class="contact-status online">Online - Secure</div>
-                            </div>
-                        </div>
-                        <div class="contact">
-                            <div class="contact-avatar">T</div>
-                            <div class="contact-info">
-                                <div class="contact-name">Trinity</div>
-                                <div class="contact-status offline">Offline</div>
-                            </div>
-                        </div>
-                    `;
-                    
-                    document.querySelectorAll('.contact').forEach(contact => {
-                        contact.addEventListener('click', function() {
-                            if (this.querySelector('.contact-status').textContent.includes('Online')) {
-                                document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
-                                this.classList.add('active');
-                                const name = this.querySelector('.contact-name').textContent;
-                                currentContact.innerHTML = `${name} <span class="online">(Secure)</span>`;
-                                
-                                // Clear chat messages
-                                chatMessages.innerHTML = '';
-                                addSystemMessage(`Secure connection established with ${name}`);
-                                
-                                // Generate security code
-                                const code = generateSecurityCode(currentUser.id, 2);
-                                securityCode.textContent = code;
-                                securityModal.style.display = 'flex';
-                            } else {
-                                addSystemMessage('This contact is offline. Messages will be delivered when they come online.');
-                            }
-                        });
-                    });
+                if (typeof sodium === 'undefined') {
+                    cryptoStatus.textContent = 'Error: Encryption library failed to load. Check your connection.';
+                } else {
+                    cryptoStatus.textContent = '';
                 }
             }, 3000);
-        }
-        
-        // Initialize
-        window.onload = function() {
-            // Simulate contacts for demo
-            simulateOtherUsers();
         };
     </script>
 </body>
