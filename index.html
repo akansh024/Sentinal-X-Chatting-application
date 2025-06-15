@@ -6,8 +6,8 @@
     <title>Sentinel-X | Secure Chat</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <!-- Fixed Libsodium URL -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js"></script>
+    <!-- Using a reliable Libsodium CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -23,6 +23,7 @@
             --border-glow: 0 0 5px var(--matrix-green), 0 0 10px var(--matrix-green);
             --text-glow: 0 0 5px var(--matrix-green);
             --red-glow: 0 0 5px #f00, 0 0 10px #f00;
+            --amber: #ffbf00;
         }
         
         body {
@@ -533,9 +534,49 @@
         
         /* Error message */
         .error-message {
-            color: #f00;
-            text-shadow: 0 0 5px #f00;
+            color: #ff5555;
+            text-shadow: 0 0 5px rgba(255, 85, 85, 0.5);
             margin-top: 10px;
+            padding: 5px;
+            background: rgba(30, 0, 0, 0.3);
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        /* Warning message */
+        .warning-message {
+            color: var(--amber);
+            text-shadow: 0 0 5px rgba(255, 191, 0, 0.5);
+            margin-top: 10px;
+            padding: 5px;
+            background: rgba(50, 30, 0, 0.3);
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        /* Crypto status indicator */
+        .crypto-status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .crypto-success {
+            background: rgba(0, 30, 0, 0.3);
+            color: #0f0;
+        }
+        
+        .crypto-failure {
+            background: rgba(30, 0, 0, 0.3);
+            color: #f00;
+        }
+        
+        /* Key indicator */
+        .key-indicator {
+            margin-top: 5px;
+            font-size: 0.8rem;
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -551,7 +592,7 @@
             <button id="register-button">Generate Identity Keys</button>
             <p>Your identity keys will be generated locally</p>
             <div class="connection-status disconnected" id="connection-status">Disconnected from network</div>
-            <div id="crypto-status" class="error-message"></div>
+            <div id="crypto-status" class="crypto-status"></div>
         </div>
     </div>
     
@@ -623,6 +664,9 @@
                     <div class="terminal-line">
                         > Establishing secure connection to server...
                     </div>
+                    <div class="terminal-line">
+                        > Initializing encryption protocols...
+                    </div>
                 </div>
                 
                 <div class="chat-input-container">
@@ -633,7 +677,7 @@
         </div>
         
         <div class="footer">
-            Sentinel-X v2.4.0 | Connection: <span id="connection-type">Secured</span> | E2E Encrypted | Messages Auto-Delete in 24h
+            Sentinel-X v2.4.1 | Connection: <span id="connection-type">Secured</span> | E2E Encrypted | Messages Auto-Delete in 24h
         </div>
     </div>
 
@@ -726,15 +770,17 @@
         
         // Connection status
         let connected = false;
+        let cryptoInitialized = false;
         
         // Initialize encryption
         async function initCrypto() {
             try {
                 // Check if sodium is already loaded
                 if (typeof sodium === 'undefined') {
-                    throw new Error('Libsodium not loaded');
+                    throw new Error('Libsodium library not loaded');
                 }
                 
+                // Wait for sodium to be ready
                 await sodium.ready;
                 
                 // Create keypair
@@ -745,12 +791,14 @@
                     privateKey: sodium.to_base64(keypair.privateKey)
                 };
                 
-                console.log('Encryption keys generated');
-                cryptoStatus.textContent = '';
+                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check-circle"></i> Encryption initialized successfully</span>';
+                cryptoStatus.className = 'crypto-status crypto-success';
+                cryptoInitialized = true;
                 return true;
             } catch (error) {
                 console.error('Crypto initialization error:', error);
-                cryptoStatus.textContent = 'Error: Encryption library failed to load. Check your connection.';
+                cryptoStatus.innerHTML = `<span class="error-message"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
+                cryptoStatus.className = 'crypto-status crypto-failure';
                 return false;
             }
         }
@@ -767,7 +815,7 @@
             registerButton.innerHTML = '<span class="spinner"></span> Generating Keys...';
             registerButton.disabled = true;
             
-            // Generate encryption keys
+            // Initialize crypto
             const cryptoSuccess = await initCrypto();
             
             if (!cryptoSuccess) {
@@ -821,6 +869,7 @@
                         addSystemMessage('Secure connection established with Sentinel-X network');
                         addSystemMessage(`Your user ID: ${response.userId}`);
                         addSystemMessage('Your identity keys have been generated locally');
+                        addSystemMessage('End-to-end encryption is active');
                         
                         // Load contacts
                         loadContacts();
@@ -1181,20 +1230,35 @@
             addSystemMessage('Do not share sensitive information.');
         });
         
-        // Initialize demo contacts if no real ones
-        window.onload = function() {
-            // Add loading animation for crypto
-            const cryptoStatus = document.getElementById('crypto-status');
-            cryptoStatus.innerHTML = '<span class="spinner"></span> Loading encryption library...';
+        // Initialize - Check Libsodium status
+        window.onload = async function() {
+            // Add initial status
+            cryptoStatus.innerHTML = '<span class="warning-message"><i class="fas fa-sync fa-spin"></i> Loading encryption library...</span>';
             
-            // Check if sodium is available
-            setTimeout(() => {
+            try {
+                // Check if sodium is available
                 if (typeof sodium === 'undefined') {
-                    cryptoStatus.textContent = 'Error: Encryption library failed to load. Check your connection.';
-                } else {
-                    cryptoStatus.textContent = '';
+                    throw new Error('Libsodium library not loaded');
                 }
-            }, 3000);
+                
+                // Try to initialize crypto
+                await sodium.ready;
+                
+                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption library ready</span>';
+                cryptoStatus.className = 'crypto-status crypto-success';
+            } catch (error) {
+                console.error('Libsodium initialization error:', error);
+                cryptoStatus.innerHTML = `<span class="error-message"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
+                cryptoStatus.className = 'crypto-status crypto-failure';
+                
+                // Provide troubleshooting tips
+                addSystemMessage('Encryption library failed to load. Trying fallback...');
+                setTimeout(() => {
+                    if (typeof sodium === 'undefined') {
+                        cryptoStatus.innerHTML += '<div class="key-indicator">Troubleshooting: Check your internet connection and try refreshing</div>';
+                    }
+                }, 3000);
+            }
         };
     </script>
 </body>
