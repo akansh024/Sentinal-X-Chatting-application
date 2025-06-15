@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
 const sodium = require('libsodium-wrappers');
 
 const app = express();
@@ -12,11 +13,13 @@ const io = socketIo(server, {
     methods: ["GET", "POST"]
   }
 });
-// Initialize SQLite database
-const db = new sqlite3.Database(':memory:'); // Use :memory: for dev, file for production
 
+// Initialize SQLite database
+const db = new sqlite3.Database(':memory:');
+
+// Create tables with password hashing
 db.serialize(() => {
-  db.run("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, publicKey TEXT)");
+  db.run("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, publicKey TEXT)");
   db.run("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, recipient_id INTEGER, ciphertext TEXT, iv TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)");
 });
 
@@ -37,11 +40,15 @@ sodium.ready.then(() => {
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
-  // User registration
-  socket.on('register', async ({ username, publicKey }, callback) => {
+  // User registration with password hashing
+  socket.on('register', async ({ username, password, publicKey }, callback) => {
     try {
-      db.run("INSERT INTO users (username, publicKey) VALUES (?, ?)", 
-        [username, publicKey], 
+      // Hash password
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(password, salt);
+      
+      db.run("INSERT INTO users (username, password_hash, publicKey) VALUES (?, ?, ?)", 
+        [username, passwordHash, publicKey], 
         function(err) {
           if (err) {
             callback({ success: false, error: err.message });
@@ -54,6 +61,23 @@ io.on('connection', (socket) => {
     } catch (error) {
       callback({ success: false, error: error.message });
     }
+  });
+
+  // User login
+  socket.on('login', ({ username, password }, callback) => {
+    db.get("SELECT id, password_hash FROM users WHERE username = ?", [username], (err, row) => {
+      if (err || !row) {
+        callback({ success: false, error: 'Invalid username or password' });
+        return;
+      }
+      
+      if (bcrypt.compareSync(password, row.password_hash)) {
+        callback({ success: true, userId: row.id });
+        console.log(`User logged in: ${username}`);
+      } else {
+        callback({ success: false, error: 'Invalid username or password' });
+      }
+    });
   });
 
   // Get online users
@@ -93,7 +117,6 @@ io.on('connection', (socket) => {
     );
   });
 
-  // Disconnect handler
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
