@@ -2,18 +2,16 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const sqlite3 = require('sqlite3').verbose();
-const bcrypt = require('bcryptjs');
 const sodium = require('libsodium-wrappers');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*", // Allow all origins in development
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
-
 // Initialize SQLite database
 const db = new sqlite3.Database(':memory:'); // Use :memory: for dev, file for production
 
