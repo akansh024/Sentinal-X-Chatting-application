@@ -6,8 +6,52 @@
     <title>Sentinel-X | Secure Chat</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <!-- Using a reliable Libsodium CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/libsodium-wrappers@latest/dist/libsodium-wrappers.min.js"></script>
+    
+    <!-- Libsodium Loading System -->
+    <script>
+        // Function to load Libsodium with multiple fallbacks
+        function loadLibsodium() {
+            const cdns = [
+                'https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js',
+                'https://unpkg.com/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js'
+            ];
+            
+            let loaded = false;
+            let attempts = 0;
+            const maxAttempts = cdns.length;
+            
+            function tryLoad() {
+                if (loaded || attempts >= maxAttempts) {
+                    if (!loaded) {
+                        console.error('All CDN attempts failed to load Libsodium');
+                        document.dispatchEvent(new CustomEvent('libsodiumLoadFailed'));
+                    }
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = cdns[attempts];
+                script.onload = function() {
+                    loaded = true;
+                    console.log('Libsodium loaded successfully from:', cdns[attempts]);
+                    document.dispatchEvent(new CustomEvent('libsodiumLoaded'));
+                };
+                script.onerror = function() {
+                    console.log('Failed to load from:', cdns[attempts]);
+                    attempts++;
+                    tryLoad();
+                };
+                document.head.appendChild(script);
+            }
+            
+            tryLoad();
+        }
+        
+        // Start loading immediately
+        loadLibsodium();
+    </script>
+    
     <style>
         * {
             margin: 0;
@@ -171,8 +215,8 @@
         
         .message-content {
             line-height: 1.4;
-            white-space: pre-wrap; /* Preserve line breaks */
-            word-break: break-word; /* Prevent long text overflow */
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         
         .message-actions {
@@ -331,7 +375,6 @@
             }
         }
         
-        /* Terminal-style animation */
         .terminal-line {
             overflow: hidden;
             white-space: nowrap;
@@ -350,7 +393,6 @@
             50% { border-color: var(--matrix-green); }
         }
         
-        /* Encryption animation */
         .encrypting::after {
             content: "🔒";
             animation: encrypt 1.5s infinite;
@@ -362,7 +404,6 @@
             100% { content: "🔒"; }
         }
         
-        /* Registration modal */
         #registration-modal {
             position: fixed;
             top: 0;
@@ -431,7 +472,6 @@
             z-index: 10;
         }
         
-        /* Security code modal */
         #security-modal {
             display: none;
             position: fixed;
@@ -516,7 +556,6 @@
             color: #f00;
         }
         
-        /* Loading spinner */
         .spinner {
             display: inline-block;
             width: 20px;
@@ -532,7 +571,6 @@
             to { transform: rotate(360deg); }
         }
         
-        /* Error message */
         .error-message {
             color: #ff5555;
             text-shadow: 0 0 5px rgba(255, 85, 85, 0.5);
@@ -543,7 +581,6 @@
             text-align: center;
         }
         
-        /* Warning message */
         .warning-message {
             color: var(--amber);
             text-shadow: 0 0 5px rgba(255, 191, 0, 0.5);
@@ -554,7 +591,6 @@
             text-align: center;
         }
         
-        /* Crypto status indicator */
         .crypto-status {
             margin-top: 15px;
             padding: 10px;
@@ -572,11 +608,26 @@
             color: #f00;
         }
         
-        /* Key indicator */
         .key-indicator {
             margin-top: 5px;
             font-size: 0.8rem;
             opacity: 0.8;
+        }
+        
+        .offline-warning {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(200, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -681,6 +732,11 @@
         </div>
     </div>
 
+    <div id="offline-warning" class="offline-warning" style="display: none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>You appear to be offline. Some features may not work.</span>
+    </div>
+
     <script>
         // Matrix background effect
         const canvas = document.getElementById('matrix-canvas');
@@ -752,6 +808,7 @@
         const e2eStatus = document.getElementById('e2e-status');
         const verificationStatus = document.getElementById('verification-status');
         const cryptoStatus = document.getElementById('crypto-status');
+        const offlineWarning = document.getElementById('offline-warning');
         
         // User state
         let currentUser = {
@@ -762,25 +819,98 @@
             currentChat: null
         };
         
-        // Socket connection - Use the updated Render server URL
-        const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
-        const socket = io(SOCKET_SERVER_URL, {
-            autoConnect: false
-        });
-        
-        // Connection status
+        // Socket connection
+        let socket;
         let connected = false;
-        let cryptoInitialized = false;
+        let cryptoReady = false;
+        
+        // Enhanced error display
+        function showError(message, details = '') {
+            const errorHtml = `
+                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                    background: rgba(0,0,0,0.9); z-index: 10000; display: flex; 
+                    justify-content: center; align-items: center; color: #f00; 
+                    text-align: center; padding: 20px; flex-direction: column;">
+                    <h1 style="color: #f00; margin-bottom: 20px;">
+                        <i class="fas fa-exclamation-triangle"></i> Critical Error
+                    </h1>
+                    <div style="font-size: 1.2rem; margin-bottom: 20px;">${message}</div>
+                    <div style="margin-bottom: 30px; color: #aaa;">${details}</div>
+                    <button onclick="window.location.reload()" 
+                        style="padding: 10px 20px; background: #f00; color: white; 
+                        border: none; border-radius: 5px; cursor: pointer;">
+                        <i class="fas fa-sync-alt"></i> Refresh Page
+                    </button>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', errorHtml);
+        }
+
+        // Initialize socket connection
+        function initializeSocket() {
+            const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
+            socket = io(SOCKET_SERVER_URL, {
+                autoConnect: false,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000
+            });
+            
+            // Handle connection
+            socket.on('connect', () => {
+                connected = true;
+                connectionStatus.textContent = 'Connected to secure network';
+                connectionStatus.className = 'connection-status connected';
+                connectionIndicator.style.backgroundColor = '#0f0';
+                connectionIndicator.style.boxShadow = '0 0 5px #0f0, 0 0 10px #0f0';
+                connectionText.textContent = 'Secured';
+                connectionText.style.color = '#0f0';
+            });
+            
+            // Handle disconnection
+            socket.on('disconnect', () => {
+                connected = false;
+                connectionStatus.textContent = 'Disconnected from network';
+                connectionStatus.className = 'connection-status disconnected';
+                connectionIndicator.style.backgroundColor = '#f00';
+                connectionIndicator.style.boxShadow = '0 0 5px #f00, 0 0 10px #f00';
+                connectionText.textContent = 'Disconnected';
+                connectionText.style.color = '#f00';
+            });
+            
+            // Handle connection error
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                connectionStatus.textContent = 'Connection error. Retrying...';
+                connectionStatus.className = 'connection-status disconnected';
+            });
+            
+            // Handle incoming messages
+            socket.on('newMessage', async (messageData) => {
+                const contact = Object.values(currentUser.contacts).find(c => c.id === messageData.senderId);
+                if (!contact || contact.id !== currentUser.currentChat) return;
+                
+                try {
+                    // Decrypt the message
+                    const plaintext = await decryptMessage(
+                        messageData.ciphertext,
+                        messageData.iv,
+                        contact.publicKey
+                    );
+                    
+                    // Add to UI
+                    addMessage(plaintext, false, contact.username);
+                } catch (error) {
+                    console.error('Decryption error:', error);
+                    addSystemMessage('Failed to decrypt a message. Security may be compromised.');
+                }
+            });
+        }
         
         // Initialize encryption
         async function initCrypto() {
             try {
-                // Check if sodium is already loaded
-                if (typeof sodium === 'undefined') {
-                    throw new Error('Libsodium library not loaded');
-                }
-                
-                // Wait for sodium to be ready
                 await sodium.ready;
                 
                 // Create keypair
@@ -791,14 +921,10 @@
                     privateKey: sodium.to_base64(keypair.privateKey)
                 };
                 
-                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check-circle"></i> Encryption initialized successfully</span>';
-                cryptoStatus.className = 'crypto-status crypto-success';
-                cryptoInitialized = true;
+                cryptoReady = true;
                 return true;
             } catch (error) {
                 console.error('Crypto initialization error:', error);
-                cryptoStatus.innerHTML = `<span class="error-message"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
-                cryptoStatus.className = 'crypto-status crypto-failure';
                 return false;
             }
         }
@@ -821,6 +947,7 @@
             if (!cryptoSuccess) {
                 registerButton.innerHTML = 'Generate Identity Keys';
                 registerButton.disabled = false;
+                showError('Encryption initialization failed', 'Failed to generate encryption keys');
                 return;
             }
             
@@ -836,67 +963,39 @@
                 }
             }, 3000);
             
-            // Handle connection
-            socket.on('connect', () => {
+            // Register user with server
+            socket.emit('register', {
+                username: username,
+                publicKey: currentUser.keyPair.publicKey
+            }, (response) => {
                 clearTimeout(connectionTimeout);
-                connected = true;
-                connectionStatus.textContent = 'Connected to secure network';
-                connectionStatus.className = 'connection-status connected';
-                connectionIndicator.style.backgroundColor = '#0f0';
-                connectionIndicator.style.boxShadow = '0 0 5px #0f0, 0 0 10px #0f0';
-                connectionText.textContent = 'Secured';
-                connectionText.style.color = '#0f0';
                 
-                // Register user with server
-                socket.emit('register', {
-                    username: username,
-                    publicKey: currentUser.keyPair.publicKey
-                }, (response) => {
-                    if (response.success) {
-                        currentUser.id = response.userId;
-                        currentUser.username = username;
-                        
-                        // Update UI
-                        userInfo.textContent = username;
-                        registrationModal.style.display = 'none';
-                        appContainer.style.display = 'flex';
-                        
-                        // Enable UI
-                        messageInput.disabled = false;
-                        sendButton.disabled = false;
-                        
-                        // Add system message
-                        addSystemMessage('Secure connection established with Sentinel-X network');
-                        addSystemMessage(`Your user ID: ${response.userId}`);
-                        addSystemMessage('Your identity keys have been generated locally');
-                        addSystemMessage('End-to-end encryption is active');
-                        
-                        // Load contacts
-                        loadContacts();
-                    } else {
-                        alert(`Registration failed: ${response.error}`);
-                        registerButton.innerHTML = 'Generate Identity Keys';
-                        registerButton.disabled = false;
-                    }
-                });
-            });
-            
-            // Handle disconnection
-            socket.on('disconnect', () => {
-                connected = false;
-                connectionStatus.textContent = 'Disconnected from network';
-                connectionStatus.className = 'connection-status disconnected';
-                connectionIndicator.style.backgroundColor = '#f00';
-                connectionIndicator.style.boxShadow = '0 0 5px #f00, 0 0 10px #f00';
-                connectionText.textContent = 'Disconnected';
-                connectionText.style.color = '#f00';
-            });
-            
-            // Handle connection error
-            socket.on('connect_error', (error) => {
-                console.error('Connection error:', error);
-                connectionStatus.textContent = 'Connection error. Retrying...';
-                connectionStatus.className = 'connection-status disconnected';
+                if (response.success) {
+                    currentUser.id = response.userId;
+                    currentUser.username = username;
+                    
+                    // Update UI
+                    userInfo.textContent = username;
+                    registrationModal.style.display = 'none';
+                    appContainer.style.display = 'flex';
+                    
+                    // Enable UI
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                    
+                    // Add system message
+                    addSystemMessage('Secure connection established with Sentinel-X network');
+                    addSystemMessage(`Your user ID: ${response.userId}`);
+                    addSystemMessage('Your identity keys have been generated locally');
+                    addSystemMessage('End-to-end encryption is active');
+                    
+                    // Load contacts
+                    loadContacts();
+                } else {
+                    alert(`Registration failed: ${response.error}`);
+                    registerButton.innerHTML = 'Generate Identity Keys';
+                    registerButton.disabled = false;
+                }
             });
         }
         
@@ -1136,27 +1235,6 @@
             }
         }
         
-        // Handle incoming messages
-        socket.on('newMessage', async (messageData) => {
-            const contact = Object.values(currentUser.contacts).find(c => c.id === messageData.senderId);
-            if (!contact || contact.id !== currentUser.currentChat) return;
-            
-            try {
-                // Decrypt the message
-                const plaintext = await decryptMessage(
-                    messageData.ciphertext,
-                    messageData.iv,
-                    contact.publicKey
-                );
-                
-                // Add to UI
-                addMessage(plaintext, false, contact.username);
-            } catch (error) {
-                console.error('Decryption error:', error);
-                addSystemMessage('Failed to decrypt a message. Security may be compromised.');
-            }
-        });
-        
         // Simulate other users for demo
         function simulateOtherUsers() {
             const demoContacts = [
@@ -1205,6 +1283,15 @@
             addSystemMessage('In production, real contacts will appear here');
         }
         
+        // Offline detection
+        function updateOnlineStatus() {
+            if (navigator.onLine) {
+                offlineWarning.style.display = 'none';
+            } else {
+                offlineWarning.style.display = 'flex';
+            }
+        }
+        
         // Event listeners
         registerButton.addEventListener('click', registerUser);
         sendButton.addEventListener('click', sendMessage);
@@ -1230,36 +1317,45 @@
             addSystemMessage('Do not share sensitive information.');
         });
         
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        
         // Initialize - Check Libsodium status
-        window.onload = async function() {
-            // Add initial status
-            cryptoStatus.innerHTML = '<span class="warning-message"><i class="fas fa-sync fa-spin"></i> Loading encryption library...</span>';
-            
+        document.addEventListener('libsodiumLoaded', async function() {
             try {
-                // Check if sodium is available
-                if (typeof sodium === 'undefined') {
-                    throw new Error('Libsodium library not loaded');
-                }
-                
-                // Try to initialize crypto
                 await sodium.ready;
-                
-                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption library ready</span>';
+                cryptoReady = true;
+                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption ready</span>';
                 cryptoStatus.className = 'crypto-status crypto-success';
-            } catch (error) {
-                console.error('Libsodium initialization error:', error);
-                cryptoStatus.innerHTML = `<span class="error-message"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
-                cryptoStatus.className = 'crypto-status crypto-failure';
                 
-                // Provide troubleshooting tips
-                addSystemMessage('Encryption library failed to load. Trying fallback...');
-                setTimeout(() => {
-                    if (typeof sodium === 'undefined') {
-                        cryptoStatus.innerHTML += '<div class="key-indicator">Troubleshooting: Check your internet connection and try refreshing</div>';
-                    }
-                }, 3000);
+                // Initialize socket
+                initializeSocket();
+                
+                // Update crypto status in registration modal
+                if (registrationModal.style.display !== 'none') {
+                    document.getElementById('crypto-status').innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption ready</span>';
+                    document.getElementById('crypto-status').className = 'crypto-status crypto-success';
+                }
+            } catch (error) {
+                console.error('Sodium initialization error:', error);
+                showError('Encryption initialization failed', error.message);
             }
-        };
+        });
+
+        document.addEventListener('libsodiumLoadFailed', function() {
+            showError(
+                'Encryption library failed to load',
+                'This application cannot run without proper encryption support. ' +
+                'Please check your internet connection and try refreshing the page. ' +
+                'If the problem persists, try using a different browser.'
+            );
+        });
+        
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            updateOnlineStatus();
+            cryptoStatus.innerHTML = '<span class="warning-message"><i class="fas fa-sync fa-spin"></i> Loading encryption library...</span>';
+        });
     </script>
 </body>
 </html>
