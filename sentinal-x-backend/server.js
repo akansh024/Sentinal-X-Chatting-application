@@ -14,16 +14,17 @@ const io = socketIo(server, {
   }
 });
 
+// In-memory user-socket mapping for basic auth & messaging
+const userSocketMap = new Map();
+
 // Initialize SQLite database
 const db = new sqlite3.Database(':memory:');
 
-// Create tables with password hashing
 db.serialize(() => {
   db.run("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, publicKey TEXT)");
   db.run("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, recipient_id INTEGER, ciphertext TEXT, iv TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)");
 });
 
-// Generate key pair for server
 const serverKeys = {
   publicKey: null,
   privateKey: null
@@ -36,25 +37,28 @@ sodium.ready.then(() => {
   console.log('Server keys generated');
 });
 
-// Socket.IO connection handler
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
-  // User registration with password hashing
   socket.on('register', async ({ username, password, publicKey }, callback) => {
     try {
-      // Hash password
       const salt = bcrypt.genSaltSync(10);
       const passwordHash = bcrypt.hashSync(password, salt);
-      
-      db.run("INSERT INTO users (username, password_hash, publicKey) VALUES (?, ?, ?)", 
-        [username, passwordHash, publicKey], 
+
+      db.run("INSERT INTO users (username, password_hash, publicKey) VALUES (?, ?, ?)",
+        [username, passwordHash, publicKey],
         function(err) {
           if (err) {
             callback({ success: false, error: err.message });
             return;
           }
-          callback({ success: true, userId: this.lastID });
+
+          const userId = this.lastID;
+          userSocketMap.set(userId, socket.id);
+          socket.userId = userId;
+          socket.join(userId.toString());
+
+          callback({ success: true, userId });
           console.log(`User registered: ${username}`);
         }
       );
@@ -63,15 +67,17 @@ io.on('connection', (socket) => {
     }
   });
 
-  // User login
   socket.on('login', ({ username, password }, callback) => {
     db.get("SELECT id, password_hash FROM users WHERE username = ?", [username], (err, row) => {
       if (err || !row) {
         callback({ success: false, error: 'Invalid username or password' });
         return;
       }
-      
+
       if (bcrypt.compareSync(password, row.password_hash)) {
+        userSocketMap.set(row.id, socket.id);
+        socket.userId = row.id;
+        socket.join(row.id.toString());
         callback({ success: true, userId: row.id });
         console.log(`User logged in: ${username}`);
       } else {
@@ -80,7 +86,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Get online users
   socket.on('getUsers', (callback) => {
     db.all("SELECT id, username, publicKey FROM users", [], (err, rows) => {
       if (err) {
@@ -91,8 +96,12 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Send message
   socket.on('sendMessage', ({ senderId, recipientId, ciphertext, iv }, callback) => {
+    if (socket.userId !== senderId) {
+      callback({ success: false, error: 'Unauthorized sender' });
+      return;
+    }
+
     const timestamp = new Date().toISOString();
     db.run(
       "INSERT INTO messages (sender_id, recipient_id, ciphertext, iv, timestamp) VALUES (?, ?, ?, ?, ?)",
@@ -102,22 +111,41 @@ io.on('connection', (socket) => {
           callback({ success: false, error: err.message });
           return;
         }
-        
-        // Notify recipient
-        io.to(recipientId).emit('newMessage', {
+
+        io.to(recipientId.toString()).emit('newMessage', {
           messageId: this.lastID,
           senderId,
           ciphertext,
           iv,
           timestamp
         });
-        
+
         callback({ success: true });
       }
     );
   });
 
+  socket.on('getMessages', ({ userId, contactId }, callback) => {
+    db.all(
+      `SELECT * FROM messages
+       WHERE (sender_id = ? AND recipient_id = ?)
+          OR (sender_id = ? AND recipient_id = ?)
+       ORDER BY timestamp ASC`,
+      [userId, contactId, contactId, userId],
+      (err, rows) => {
+        if (err) {
+          callback({ success: false, error: err.message });
+        } else {
+          callback({ success: true, messages: rows });
+        }
+      }
+    );
+  });
+
   socket.on('disconnect', () => {
+    if (socket.userId) {
+      userSocketMap.delete(socket.userId);
+    }
     console.log('Client disconnected:', socket.id);
   });
 });
