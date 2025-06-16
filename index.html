@@ -7,91 +7,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
-    <!-- Improved Libsodium Loading System -->
-    <script>
-        // Function to load Libsodium with multiple fallbacks
-        function loadLibsodium() {
-            const cdns = [
-                'https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js',
-                'https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js',
-                'https://unpkg.com/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js',
-                'https://cdn.jsdelivr.net/npm/libsodium-wrappers@latest/dist/browsers/sodium.min.js',
-                'https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7/dist/browsers/sodium.min.js'
-            ];
-            
-            let loaded = false;
-            let attempts = 0;
-            const maxAttempts = cdns.length;
-            
-            function tryLoad() {
-                if (loaded || attempts >= maxAttempts) {
-                    if (!loaded) {
-                        console.error('All CDN attempts failed to load Libsodium');
-                        // Try local fallback as last resort
-                        tryLocalFallback();
-                    }
-                    return;
-                }
-                
-                console.log(`Attempting to load Libsodium from: ${cdns[attempts]}`);
-                updateLoadingStatus(`Loading encryption (${attempts+1}/${maxAttempts})...`);
-                
-                const script = document.createElement('script');
-                script.src = cdns[attempts];
-                script.onload = function() {
-                    loaded = true;
-                    console.log('Libsodium loaded successfully from:', cdns[attempts]);
-                    updateLoadingStatus('Encryption ready');
-                    document.dispatchEvent(new CustomEvent('libsodiumLoaded'));
-                };
-                script.onerror = function() {
-                    console.log('Failed to load from:', cdns[attempts]);
-                    attempts++;
-                    setTimeout(tryLoad, 500); // Add small delay between attempts
-                };
-                document.head.appendChild(script);
-            }
-            
-            function tryLocalFallback() {
-                console.log('Attempting local fallback...');
-                updateLoadingStatus('Trying local encryption library...');
-                
-                const script = document.createElement('script');
-                script.src = 'libsodium/sodium.min.js'; // Local fallback path
-                script.onload = function() {
-                    loaded = true;
-                    console.log('Libsodium loaded from local fallback');
-                    updateLoadingStatus('Encryption ready (local)');
-                    document.dispatchEvent(new CustomEvent('libsodiumLoaded'));
-                };
-                script.onerror = function() {
-                    console.error('Local fallback failed');
-                    updateLoadingStatus('Encryption failed');
-                    document.dispatchEvent(new CustomEvent('libsodiumLoadFailed'));
-                };
-                document.head.appendChild(script);
-            }
-            
-            function updateLoadingStatus(message) {
-                const statusEl = document.getElementById('crypto-status');
-                if (statusEl) {
-                    if (message.includes('failed')) {
-                        statusEl.innerHTML = `<span class="error-message"><i class="fas fa-exclamation-circle"></i> ${message}</span>`;
-                    } else if (message.includes('ready')) {
-                        statusEl.innerHTML = `<span class="online"><i class="fas fa-check-circle"></i> ${message}</span>`;
-                    } else {
-                        statusEl.innerHTML = `<span><i class="fas fa-sync fa-spin"></i> ${message}</span>`;
-                    }
-                }
-            }
-            
-            // Start loading immediately
-            tryLoad();
-        }
-        
-        // Start loading immediately
-        loadLibsodium();
-    </script>
+    <!-- Using the most reliable Libsodium CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js"></script>
     
     <style>
         * {
@@ -906,11 +823,6 @@
                         border: none; border-radius: 5px; cursor: pointer;">
                         <i class="fas fa-sync-alt"></i> Refresh Page
                     </button>
-                    <button onclick="tryLocalFallback()" 
-                        style="padding: 10px 20px; background: #333; color: white; 
-                        border: none; border-radius: 5px; cursor: pointer; margin-top: 10px;">
-                        <i class="fas fa-download"></i> Try Local Version
-                    </button>
                 </div>
             `;
             document.body.insertAdjacentHTML('beforeend', errorHtml);
@@ -992,9 +904,13 @@
                 };
                 
                 cryptoReady = true;
+                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption ready</span>';
+                cryptoStatus.className = 'crypto-status crypto-success';
                 return true;
             } catch (error) {
                 console.error('Crypto initialization error:', error);
+                cryptoStatus.innerHTML = '<span class="error-message"><i class="fas fa-exclamation-circle"></i> Encryption failed</span>';
+                cryptoStatus.className = 'crypto-status crypto-failure';
                 return false;
             }
         }
@@ -1390,40 +1306,19 @@
         window.addEventListener('online', updateOnlineStatus);
         window.addEventListener('offline', updateOnlineStatus);
         
-        // Initialize - Check Libsodium status
-        document.addEventListener('libsodiumLoaded', async function() {
-            try {
-                await sodium.ready;
-                cryptoReady = true;
-                cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption ready</span>';
-                cryptoStatus.className = 'crypto-status crypto-success';
-                
-                // Initialize socket
-                initializeSocket();
-                
-                // Update crypto status in registration modal
-                if (registrationModal.style.display !== 'none') {
-                    document.getElementById('crypto-status').innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption ready</span>';
-                    document.getElementById('crypto-status').className = 'crypto-status crypto-success';
-                }
-            } catch (error) {
-                console.error('Sodium initialization error:', error);
-                showError('Encryption initialization failed', error.message);
-            }
-        });
-
-        document.addEventListener('libsodiumLoadFailed', function() {
-            showError(
-                'Encryption library failed to load',
-                'This application cannot run without proper encryption support. ' +
-                'Please check your internet connection and try refreshing the page. ' +
-                'If the problem persists, try using a different browser.'
-            );
-        });
-        
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
             updateOnlineStatus();
+            
+            // Initialize socket
+            initializeSocket();
+            
+            // Initialize crypto
+            initCrypto().then(success => {
+                if (!success) {
+                    showError('Encryption failed to load', 'Please refresh the page or try a different browser');
+                }
+            });
             
             // Update progress bar during loading
             const progressInterval = setInterval(() => {
