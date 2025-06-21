@@ -381,17 +381,16 @@
             let currentUser = {
                 id: null,
                 username: '',
-                keyPair: null,
+                key: null,
                 contacts: {},
-                currentChat: null,
-                symKey: null
+                currentChat: null
             };
             
             // Socket connection
             let socket;
             let connected = false;
             
-            // Initialize socket connection
+            // Initialize socket connection with modern parameters
             function initializeSocket() {
                 const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
                 socket = io(SOCKET_SERVER_URL, {
@@ -436,9 +435,9 @@
                     try {
                         // Decrypt the message
                         const plaintext = await decryptMessage(
-                            messageData.ciphertext,
-                            messageData.iv,
-                            currentUser.symKey
+                            new Uint8Array(messageData.ciphertext),
+                            new Uint8Array(messageData.iv),
+                            currentUser.key
                         );
                         
                         // Add to UI
@@ -446,23 +445,6 @@
                     } catch (error) {
                         console.error('Decryption error:', error);
                         addSystemMessage('Failed to decrypt a message. Security may be compromised.');
-                    }
-                });
-                
-                // Handle new user registrations
-                socket.on('userRegistered', (user) => {
-                    if (user.id !== currentUser.id) {
-                        addContact(user);
-                    }
-                });
-                
-                // Handle user disconnections
-                socket.on('userDisconnected', (userId) => {
-                    const contactElement = document.querySelector(`.contact-item[data-user-id="${userId}"]`);
-                    if (contactElement) {
-                        const status = contactElement.querySelector('.status-indicator');
-                        status.className = 'status-indicator offline';
-                        status.nextSibling.textContent = ' Offline';
                     }
                 });
             }
@@ -490,45 +472,10 @@
                 }
             }
             
-            // Generate RSA key pair
-            async function generateKeyPair() {
+            // Generate encryption key
+            async function generateKey() {
                 try {
-                    return await window.crypto.subtle.generateKey(
-                        {
-                            name: "RSA-OAEP",
-                            modulusLength: 2048,
-                            publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-                            hash: "SHA-256",
-                        },
-                        true,
-                        ["encrypt", "decrypt"]
-                    );
-                } catch (error) {
-                    console.error('Key generation error:', error);
-                    return null;
-                }
-            }
-            
-            // Export public key as base64
-            async function exportPublicKey(key) {
-                const exported = await window.crypto.subtle.exportKey("spki", key);
-                return arrayBufferToBase64(exported);
-            }
-            
-            // Convert ArrayBuffer to Base64
-            function arrayBufferToBase64(buffer) {
-                let binary = '';
-                const bytes = new Uint8Array(buffer);
-                for (let i = 0; i < bytes.byteLength; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                return btoa(binary);
-            }
-            
-            // Generate symmetric encryption key
-            async function generateSymmetricKey() {
-                try {
-                    return await window.crypto.subtle.generateKey(
+                    const key = await window.crypto.subtle.generateKey(
                         {
                             name: "AES-GCM",
                             length: 256
@@ -536,8 +483,10 @@
                         true,
                         ["encrypt", "decrypt"]
                     );
+                    
+                    return key;
                 } catch (error) {
-                    console.error('Symmetric key generation error:', error);
+                    console.error('Key generation error:', error);
                     return null;
                 }
             }
@@ -610,17 +559,14 @@
                     return;
                 }
                 
-                // Generate RSA key pair
-                const keyPair = await generateKeyPair();
-                if (!keyPair) {
+                // Generate a key for the user
+                const userKey = await generateKey();
+                if (!userKey) {
                     registerButton.innerHTML = 'Generate Identity Keys';
                     registerButton.disabled = false;
                     showError('Key generation failed', 'Failed to generate encryption keys');
                     return;
                 }
-                
-                // Export public key
-                const publicKeyBase64 = await exportPublicKey(keyPair.publicKey);
                 
                 // Connect to server
                 socket.connect();
@@ -633,83 +579,40 @@
                     }
                 }, 3000);
                 
-                // Register user with server
+                // Register user with server - FIXED PARAMETERS
                 socket.emit('register', {
-                    username: username,
-                    publicKey: publicKeyBase64
+                    username: username
                 }, (response) => {
                     clearTimeout(connectionTimeout);
                     
                     if (response.success) {
                         currentUser.id = response.userId;
                         currentUser.username = username;
-                        currentUser.keyPair = keyPair;
+                        currentUser.key = userKey;
                         
-                        // Generate symmetric key for messages
-                        generateSymmetricKey().then(symKey => {
-                            currentUser.symKey = symKey;
-                            
-                            // Update UI
-                            userInfo.textContent = username;
-                            registrationModal.style.display = 'none';
-                            appContainer.style.display = 'block';
-                            
-                            // Enable UI
-                            messageInput.disabled = false;
-                            sendButton.disabled = false;
-                            
-                            // Add system message
-                            addSystemMessage('Secure connection established with Sentinel-X network');
-                            addSystemMessage(`Your user ID: ${response.userId}`);
-                            addSystemMessage('Your encryption keys have been generated locally');
-                            addSystemMessage('End-to-end encryption is active');
-                            
-                            // Load contacts
-                            loadContacts();
-                        });
+                        // Update UI
+                        userInfo.textContent = username;
+                        registrationModal.style.display = 'none';
+                        appContainer.style.display = 'block';
+                        
+                        // Enable UI
+                        messageInput.disabled = false;
+                        sendButton.disabled = false;
+                        
+                        // Add system message
+                        addSystemMessage('Secure connection established with Sentinel-X network');
+                        addSystemMessage(`Your user ID: ${response.userId}`);
+                        addSystemMessage('Your encryption keys have been generated locally');
+                        addSystemMessage('End-to-end encryption is active');
+                        
+                        // Load contacts
+                        loadContacts();
                     } else {
                         alert(`Registration failed: ${response.error}`);
                         registerButton.innerHTML = 'Generate Identity Keys';
                         registerButton.disabled = false;
                     }
                 });
-            }
-            
-            // Add contact to UI
-            function addContact(user) {
-                // Skip if contact already exists
-                if (document.querySelector(`.contact-item[data-user-id="${user.id}"]`)) return;
-                
-                const contactEl = document.createElement('div');
-                contactEl.className = 'contact-item p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
-                contactEl.dataset.userId = user.id;
-                contactEl.innerHTML = `
-                    <div class="flex items-center">
-                        <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
-                            ${user.username.charAt(0)}
-                        </div>
-                        <div>
-                            <div class="font-bold">${user.username}</div>
-                            <div class="text-xs opacity-75 flex items-center">
-                                <span class="status-indicator online"></span>
-                                Online - Secure
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                contactEl.addEventListener('click', () => {
-                    document.querySelectorAll('.contact-item').forEach(c => {
-                        c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
-                    });
-                    contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
-                    openChat(user.id);
-                });
-                
-                contactList.appendChild(contactEl);
-                
-                // Add to currentUser contacts
-                currentUser.contacts[user.id] = user;
             }
             
             // Load contacts
@@ -721,7 +624,35 @@
                         
                         response.users.forEach(user => {
                             if (user.id !== currentUser.id) {
-                                addContact(user);
+                                currentUser.contacts[user.id] = user;
+                                
+                                const contactEl = document.createElement('div');
+                                contactEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
+                                contactEl.dataset.userId = user.id;
+                                contactEl.innerHTML = `
+                                    <div class="flex items-center">
+                                        <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
+                                            ${user.username.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <div class="font-bold">${user.username}</div>
+                                            <div class="text-xs opacity-75 flex items-center">
+                                                <span class="status-indicator online"></span>
+                                                Online - Secure
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                contactEl.addEventListener('click', () => {
+                                    document.querySelectorAll('#contact-list > div').forEach(c => {
+                                        c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
+                                    });
+                                    contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
+                                    openChat(user.id);
+                                });
+                                
+                                contactList.appendChild(contactEl);
                             }
                         });
                         
@@ -825,7 +756,7 @@
                 
                 try {
                     // Encrypt the message
-                    const { ciphertext, iv } = await encryptMessage(message, currentUser.symKey);
+                    const { ciphertext, iv } = await encryptMessage(message, currentUser.key);
                     
                     // Add to UI immediately
                     addMessage(message, true);
