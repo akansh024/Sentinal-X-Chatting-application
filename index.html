@@ -383,14 +383,15 @@
                 username: '',
                 keyPair: null,
                 contacts: {},
-                currentChat: null
+                currentChat: null,
+                symKey: null
             };
             
             // Socket connection
             let socket;
             let connected = false;
             
-            // Initialize socket connection with modern parameters
+            // Initialize socket connection
             function initializeSocket() {
                 const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
                 socket = io(SOCKET_SERVER_URL, {
@@ -437,7 +438,7 @@
                         const plaintext = await decryptMessage(
                             messageData.ciphertext,
                             messageData.iv,
-                            contact.key
+                            currentUser.symKey
                         );
                         
                         // Add to UI
@@ -445,6 +446,23 @@
                     } catch (error) {
                         console.error('Decryption error:', error);
                         addSystemMessage('Failed to decrypt a message. Security may be compromised.');
+                    }
+                });
+                
+                // Handle new user registrations
+                socket.on('userRegistered', (user) => {
+                    if (user.id !== currentUser.id) {
+                        addContact(user);
+                    }
+                });
+                
+                // Handle user disconnections
+                socket.on('userDisconnected', (userId) => {
+                    const contactElement = document.querySelector(`.contact-item[data-user-id="${userId}"]`);
+                    if (contactElement) {
+                        const status = contactElement.querySelector('.status-indicator');
+                        status.className = 'status-indicator offline';
+                        status.nextSibling.textContent = ' Offline';
                     }
                 });
             }
@@ -618,7 +636,7 @@
                 // Register user with server
                 socket.emit('register', {
                     username: username,
-                    publicKey: publicKeyBase64  // Fixed: Send public key to server
+                    publicKey: publicKeyBase64
                 }, (response) => {
                     clearTimeout(connectionTimeout);
                     
@@ -657,6 +675,43 @@
                 });
             }
             
+            // Add contact to UI
+            function addContact(user) {
+                // Skip if contact already exists
+                if (document.querySelector(`.contact-item[data-user-id="${user.id}"]`)) return;
+                
+                const contactEl = document.createElement('div');
+                contactEl.className = 'contact-item p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
+                contactEl.dataset.userId = user.id;
+                contactEl.innerHTML = `
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
+                            ${user.username.charAt(0)}
+                        </div>
+                        <div>
+                            <div class="font-bold">${user.username}</div>
+                            <div class="text-xs opacity-75 flex items-center">
+                                <span class="status-indicator online"></span>
+                                Online - Secure
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                contactEl.addEventListener('click', () => {
+                    document.querySelectorAll('.contact-item').forEach(c => {
+                        c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
+                    });
+                    contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
+                    openChat(user.id);
+                });
+                
+                contactList.appendChild(contactEl);
+                
+                // Add to currentUser contacts
+                currentUser.contacts[user.id] = user;
+            }
+            
             // Load contacts
             function loadContacts() {
                 socket.emit('getUsers', {}, (response) => {
@@ -666,45 +721,15 @@
                         
                         response.users.forEach(user => {
                             if (user.id !== currentUser.id) {
-                                currentUser.contacts[user.id] = user;
-                                
-                                const contactEl = document.createElement('div');
-                                contactEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
-                                contactEl.dataset.userId = user.id;
-                                contactEl.innerHTML = `
-                                    <div class="flex items-center">
-                                        <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
-                                            ${user.username.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <div class="font-bold">${user.username}</div>
-                                            <div class="text-xs opacity-75 flex items-center">
-                                                <span class="status-indicator online"></span>
-                                                Online - Secure
-                                            </div>
-                                        </div>
-                                    </div>
-                                `;
-                                
-                                contactEl.addEventListener('click', () => {
-                                    document.querySelectorAll('#contact-list > div').forEach(c => {
-                                        c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
-                                    });
-                                    contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
-                                    openChat(user.id);
-                                });
-                                
-                                contactList.appendChild(contactEl);
+                                addContact(user);
                             }
                         });
                         
-                        // If no contacts, simulate demo contacts
                         if (response.users.length <= 1) {
-                            simulateOtherUsers();
+                            addSystemMessage('No other users online. Invite others to join!');
                         }
                     } else {
-                        // If no real contacts, simulate demo contacts
-                        simulateOtherUsers();
+                        addSystemMessage('Failed to load contacts. Please refresh the page.');
                     }
                 });
             }
@@ -729,12 +754,6 @@
                 
                 // Show verification modal
                 securityModal.classList.remove('hidden');
-                
-                // Add demo-specific security warning
-                if (contactId.startsWith('demo')) {
-                    addSystemMessage('DEMO MODE: Security verification is simulated');
-                    addSystemMessage('In production, compare codes with your contact');
-                }
             }
             
             // Generate security code for verification
@@ -804,29 +823,6 @@
                 
                 const contact = currentUser.contacts[currentUser.currentChat];
                 
-                // For demo contacts
-                if (contact.id.startsWith('demo')) {
-                    // Add to UI immediately
-                    addMessage(message, true);
-                    
-                    // Simulate response after delay
-                    setTimeout(() => {
-                        if (contact.username === 'Agent Smith') {
-                            addMessage("Your attempts to escape the Matrix are futile, Mr. Anderson.", false, contact.username);
-                        } else if (contact.username === 'Trinity') {
-                            addMessage("Follow the white rabbit. Knock knock, Neo.", false, contact.username);
-                        } else if (contact.username === 'Morpheus') {
-                            addMessage("Free your mind. Take the red pill.", false, contact.username);
-                        } else {
-                            addMessage("This is a simulated response in demo mode.", false, contact.username);
-                        }
-                    }, 1500);
-                    
-                    messageInput.value = '';
-                    return;
-                }
-                
-                // For real contacts
                 try {
                     // Encrypt the message
                     const { ciphertext, iv } = await encryptMessage(message, currentUser.symKey);
@@ -851,63 +847,6 @@
                     console.error('Encryption error:', error);
                     addSystemMessage('Failed to encrypt message. Security compromised!');
                 }
-            }
-            
-            // Simulate other users for demo
-            function simulateOtherUsers() {
-                const demoContacts = [
-                    { id: 'demo1', username: 'Agent Smith' },
-                    { id: 'demo2', username: 'Trinity' },
-                    { id: 'demo3', username: 'Morpheus' }
-                ];
-
-                contactList.innerHTML = '';
-
-                demoContacts.forEach(contact => {
-                    currentUser.contacts[contact.id] = contact;
-
-                    const contactEl = document.createElement('div');
-                    contactEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
-                    contactEl.dataset.userId = contact.id;
-                    contactEl.innerHTML = `
-                        <div class="flex items-center">
-                            <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
-                                ${contact.username.charAt(0)}
-                            </div>
-                            <div>
-                                <div class="font-bold">${contact.username}</div>
-                                <div class="text-xs opacity-75 flex items-center">
-                                    <span class="status-indicator online"></span>
-                                    Online - Secure
-                                </div>
-                            </div>
-                        </div>
-                    `;
-
-                    contactEl.addEventListener('click', () => {
-                        document.querySelectorAll('#contact-list > div').forEach(c => {
-                            c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
-                        });
-                        contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
-                        openChat(contact.id);
-                        
-                        // Add welcome message from demo contact
-                        setTimeout(() => {
-                            if (contact.username === 'Agent Smith') {
-                                addMessage("Welcome to Sentinel-X, Mr. Anderson. We've been expecting you.", false, contact.username);
-                            } else if (contact.username === 'Trinity') {
-                                addMessage("I've been watching you, Neo. The system has you.", false, contact.username);
-                            } else if (contact.username === 'Morpheus') {
-                                addMessage("You take the blue pill, the story ends. You take the red pill...", false, contact.username);
-                            }
-                        }, 1000);
-                    });
-
-                    contactList.appendChild(contactEl);
-                });
-                
-                addSystemMessage('DEMO MODE: Simulated contacts are active');
-                addSystemMessage('In production, real contacts will appear here');
             }
             
             // Offline detection
