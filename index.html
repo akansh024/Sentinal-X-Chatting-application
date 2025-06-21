@@ -283,6 +283,31 @@
         </div>
     </div>
     
+    <!-- Contact Request Modal -->
+    <div id="contact-modal" class="modal-overlay hidden">
+        <div class="modal-content p-8 text-center">
+            <h2 class="text-2xl font-bold mb-4 glow-text">
+                <i class="fas fa-user-plus mr-2"></i> Add Contact
+            </h2>
+            
+            <input type="text" id="contact-id-input" 
+                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
+                   placeholder="Enter User ID">
+                   
+            <button id="send-request-button" 
+                    class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
+                Send Connection Request
+            </button>
+            
+            <div id="contact-status" class="py-2 px-3 rounded-lg bg-matrix-dark border border-matrix-green mb-4 hidden">
+                <span id="contact-status-text"></span>
+            </div>
+            
+            <h3 class="text-lg font-bold mt-6 mb-3">Pending Requests</h3>
+            <div id="pending-requests" class="max-h-40 overflow-y-auto"></div>
+        </div>
+    </div>
+    
     <!-- Main App Container -->
     <div class="container mx-auto px-4 py-6 max-w-6xl" id="app-container" style="display:none">
         <!-- User Info Header -->
@@ -291,16 +316,31 @@
                 <h1 class="text-3xl font-bold uppercase tracking-wider glow-text">Sentinel-X</h1>
                 <p class="text-sm opacity-75">SECURE COMMUNICATION NETWORK</p>
             </div>
-            <div id="user-info" class="px-3 py-1 bg-matrix-panel border border-matrix-green rounded-lg text-sm"></div>
+            <div class="flex items-center gap-4">
+                <button id="add-contact-btn" class="px-4 py-1 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition">
+                    <i class="fas fa-user-plus mr-2"></i>Add Contact
+                </button>
+                <div id="user-info" class="px-3 py-1 bg-matrix-panel border border-matrix-green rounded-lg text-sm"></div>
+            </div>
         </div>
         
         <div class="flex flex-col md:flex-row gap-6 h-[75vh]">
             <!-- Sidebar -->
             <div class="w-full md:w-80 bg-matrix-panel glow-border rounded-xl p-4 flex flex-col">
-                <h2 class="text-xl font-bold mb-4"><i class="fas fa-user-friends mr-2"></i> Contacts</h2>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold"><i class="fas fa-user-friends mr-2"></i> Contacts</h2>
+                    <span id="online-count" class="bg-green-900 text-xs px-2 py-1 rounded-full">0 online</span>
+                </div>
                 
                 <div class="contact-list flex-1 overflow-y-auto" id="contact-list">
                     <!-- Contacts will be loaded here -->
+                    <div class="text-center py-8 text-matrix-green text-opacity-50">
+                        <i class="fas fa-user-friends text-3xl mb-2"></i>
+                        <p>No contacts yet</p>
+                        <button id="add-contact-sidebar" class="mt-4 text-matrix-green underline">
+                            Add a contact
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="mt-6 pt-4 border-t border-matrix-green border-opacity-30">
@@ -340,14 +380,10 @@
                 
                 <!-- Chat Messages -->
                 <div class="chat-messages flex-1 overflow-y-auto p-4" id="chat-messages">
-                    <div class="terminal-line">
-                        > Welcome to Sentinel-X secure communication network
-                    </div>
-                    <div class="terminal-line">
-                        > Establishing secure connection to server...
-                    </div>
-                    <div class="terminal-line">
-                        > Initializing encryption protocols...
+                    <div class="text-center py-12 text-matrix-green text-opacity-50">
+                        <i class="fas fa-comments text-3xl mb-2"></i>
+                        <p>No conversation selected</p>
+                        <p class="text-sm mt-2">Select a contact or add a new one to start chatting</p>
                     </div>
                 </div>
                 
@@ -429,6 +465,15 @@
             const cryptoStatus = document.getElementById('crypto-status');
             const cryptoProgress = document.getElementById('crypto-progress');
             const offlineWarning = document.getElementById('offline-warning');
+            const contactModal = document.getElementById('contact-modal');
+            const contactIdInput = document.getElementById('contact-id-input');
+            const sendRequestButton = document.getElementById('send-request-button');
+            const contactStatus = document.getElementById('contact-status');
+            const contactStatusText = document.getElementById('contact-status-text');
+            const addContactBtn = document.getElementById('add-contact-btn');
+            const addContactSidebar = document.getElementById('add-contact-sidebar');
+            const pendingRequests = document.getElementById('pending-requests');
+            const onlineCount = document.getElementById('online-count');
             
             // User state
             let currentUser = {
@@ -499,6 +544,32 @@
                         console.error('Decryption error:', error);
                         addSystemMessage('Failed to decrypt a message. Security may be compromised.');
                     }
+                });
+                
+                // Handle contact requests
+                socket.on('contactRequest', (request) => {
+                    addPendingRequest(request);
+                });
+                
+                // Handle contact request response
+                socket.on('contactRequestResponse', (response) => {
+                    if (response.accepted) {
+                        contactStatus.classList.remove('hidden');
+                        contactStatus.classList.remove('bg-red-900');
+                        contactStatus.classList.add('bg-green-900');
+                        contactStatusText.textContent = `Request accepted by ${response.requesterName}`;
+                        
+                        // Add to contacts
+                        addContact(response.requesterId, response.requesterName);
+                    } else {
+                        contactStatus.classList.remove('hidden');
+                        contactStatus.classList.remove('bg-green-900');
+                        contactStatus.classList.add('bg-red-900');
+                        contactStatusText.textContent = `Request declined by ${response.requesterName}`;
+                    }
+                    
+                    // Remove from pending requests
+                    removePendingRequest(response.requesterId);
                 });
             }
             
@@ -754,12 +825,14 @@
                         currentUser.contacts = {};
                         contactList.innerHTML = '';
                         
+                        let onlineUsers = 0;
+                        
                         response.users.forEach(user => {
                             if (user.id !== currentUser.id) {
                                 currentUser.contacts[user.id] = user;
                                 
                                 const contactEl = document.createElement('div');
-                                contactEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
+                                contactEl.className = 'contact-item p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
                                 contactEl.dataset.userId = user.id;
                                 contactEl.innerHTML = `
                                     <div class="flex items-center">
@@ -777,7 +850,7 @@
                                 `;
                                 
                                 contactEl.addEventListener('click', () => {
-                                    document.querySelectorAll('#contact-list > div').forEach(c => {
+                                    document.querySelectorAll('.contact-item').forEach(c => {
                                         c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
                                     });
                                     contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
@@ -785,16 +858,151 @@
                                 });
                                 
                                 contactList.appendChild(contactEl);
+                                onlineUsers++;
                             }
                         });
                         
+                        // Update online count
+                        onlineCount.textContent = `${onlineUsers} online`;
+                        
                         if (response.users.length <= 1) {
-                            addSystemMessage('No other users online. Invite others to join!');
+                            contactList.innerHTML = `
+                                <div class="text-center py-8 text-matrix-green text-opacity-50">
+                                    <i class="fas fa-user-friends text-3xl mb-2"></i>
+                                    <p>No contacts yet</p>
+                                    <button id="add-contact-sidebar" class="mt-4 text-matrix-green underline">
+                                        Add a contact
+                                    </button>
+                                </div>
+                            `;
+                            document.getElementById('add-contact-sidebar').addEventListener('click', () => {
+                                contactModal.classList.remove('hidden');
+                            });
                         }
                     } else {
-                        addSystemMessage('Failed to load contacts. Please refresh the page.');
+                        contactList.innerHTML = `
+                            <div class="text-center py-8 text-matrix-green text-opacity-50">
+                                <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
+                                <p>Failed to load contacts</p>
+                                <button class="mt-4 text-matrix-green underline" onclick="location.reload()">
+                                    Refresh page
+                                </button>
+                            </div>
+                        `;
                     }
                 });
+            }
+            
+            // Add a contact
+            function addContact(contactId, contactName) {
+                if (!currentUser.contacts[contactId]) {
+                    currentUser.contacts[contactId] = {
+                        id: contactId,
+                        username: contactName
+                    };
+                    
+                    const contactEl = document.createElement('div');
+                    contactEl.className = 'contact-item p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
+                    contactEl.dataset.userId = contactId;
+                    contactEl.innerHTML = `
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
+                                ${contactName.charAt(0)}
+                            </div>
+                            <div>
+                                <div class="font-bold">${contactName}</div>
+                                <div class="text-xs opacity-75 flex items-center">
+                                    <span class="status-indicator online"></span>
+                                    Online - Secure
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    contactEl.addEventListener('click', () => {
+                        document.querySelectorAll('.contact-item').forEach(c => {
+                            c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
+                        });
+                        contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
+                        openChat(contactId);
+                    });
+                    
+                    contactList.appendChild(contactEl);
+                    
+                    // Update online count
+                    onlineCount.textContent = `${Object.keys(currentUser.contacts).length} online`;
+                }
+            }
+            
+            // Add pending request to UI
+            function addPendingRequest(request) {
+                const requestEl = document.createElement('div');
+                requestEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg border border-matrix-green border-opacity-30';
+                requestEl.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-bold">${request.requesterName}</div>
+                            <div class="text-xs opacity-75">Wants to connect</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="accept-request px-3 py-1 bg-green-900 rounded hover:bg-green-800" data-request-id="${request.requesterId}">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="decline-request px-3 py-1 bg-red-900 rounded hover:bg-red-800" data-request-id="${request.requesterId}">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                pendingRequests.appendChild(requestEl);
+                
+                // Add event listeners
+                requestEl.querySelector('.accept-request').addEventListener('click', function() {
+                    const requestId = this.dataset.requestId;
+                    acceptContactRequest(requestId);
+                });
+                
+                requestEl.querySelector('.decline-request').addEventListener('click', function() {
+                    const requestId = this.dataset.requestId;
+                    declineContactRequest(requestId);
+                });
+            }
+            
+            // Remove pending request from UI
+            function removePendingRequest(requestId) {
+                const requestEl = pendingRequests.querySelector(`[data-request-id="${requestId}"]`);
+                if (requestEl) {
+                    requestEl.parentElement.parentElement.parentElement.remove();
+                }
+            }
+            
+            // Accept contact request
+            function acceptContactRequest(requesterId) {
+                socket.emit('contactRequestResponse', {
+                    requesterId: requesterId,
+                    recipientId: currentUser.id,
+                    accepted: true
+                });
+                
+                // Add to contacts immediately
+                const requestEl = pendingRequests.querySelector(`[data-request-id="${requesterId}"]`);
+                if (requestEl) {
+                    const requesterName = requestEl.closest('div').querySelector('.font-bold').textContent;
+                    addContact(requesterId, requesterName);
+                    removePendingRequest(requesterId);
+                }
+            }
+            
+            // Decline contact request
+            function declineContactRequest(requesterId) {
+                socket.emit('contactRequestResponse', {
+                    requesterId: requesterId,
+                    recipientId: currentUser.id,
+                    accepted: false
+                });
+                
+                removePendingRequest(requesterId);
             }
             
             // Open chat with a contact
@@ -912,6 +1120,42 @@
                 }
             }
             
+            // Send contact request
+            function sendContactRequest() {
+                const contactId = contactIdInput.value.trim();
+                if (!contactId) {
+                    alert('Please enter a user ID');
+                    return;
+                }
+                
+                if (contactId === currentUser.id) {
+                    alert("You can't add yourself as a contact");
+                    return;
+                }
+                
+                // Hide status message
+                contactStatus.classList.add('hidden');
+                
+                // Send request to server
+                socket.emit('contactRequest', {
+                    requesterId: currentUser.id,
+                    requesterName: currentUser.username,
+                    recipientId: contactId
+                }, (response) => {
+                    if (response.success) {
+                        contactStatus.classList.remove('hidden');
+                        contactStatus.classList.remove('bg-red-900');
+                        contactStatus.classList.add('bg-green-900');
+                        contactStatusText.textContent = 'Request sent successfully';
+                    } else {
+                        contactStatus.classList.remove('hidden');
+                        contactStatus.classList.remove('bg-green-900');
+                        contactStatus.classList.add('bg-red-900');
+                        contactStatusText.textContent = `Error: ${response.error}`;
+                    }
+                });
+            }
+            
             // Offline detection
             function updateOnlineStatus() {
                 if (navigator.onLine) {
@@ -972,6 +1216,18 @@
                 document.getElementById('verification-status').className = 'text-red-500 glow-text';
                 addSystemMessage('Security verification failed. Connection may be compromised!');
                 addSystemMessage('Do not share sensitive information.');
+            });
+            
+            addContactBtn.addEventListener('click', () => {
+                contactModal.classList.remove('hidden');
+            });
+            
+            sendRequestButton.addEventListener('click', sendContactRequest);
+            
+            contactIdInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendContactRequest();
+                }
             });
             
             window.addEventListener('online', updateOnlineStatus);
