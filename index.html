@@ -190,6 +190,10 @@
             <input type="text" id="username-input" 
                    class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
                    placeholder="Choose a username" autocomplete="off">
+            
+            <input type="password" id="password-input" 
+                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
+                   placeholder="Create a password" autocomplete="new-password">
                    
             <button id="register-button" 
                     class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
@@ -197,6 +201,13 @@
             </button>
             
             <p class="text-sm opacity-75 mb-4">Your identity keys will be generated locally</p>
+            
+            <div class="text-center mt-4">
+                <p class="text-sm opacity-75">Already registered?</p>
+                <button id="show-login" class="text-matrix-green underline mt-1">
+                    Switch to Login
+                </button>
+            </div>
             
             <div id="connection-status" class="py-2 px-3 bg-red-900 rounded-lg mb-4">
                 <span class="status-indicator offline"></span>
@@ -208,6 +219,41 @@
                 <div class="progress-bar mt-2">
                     <div class="progress-fill" id="crypto-progress"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal-overlay hidden">
+        <div class="modal-content p-8 text-center">
+            <h2 class="text-2xl font-bold mb-2 glow-text">
+                <i class="fas fa-user-lock mr-2"></i> Sentinel-X Login
+            </h2>
+            <p class="mb-4 opacity-75">Access your secure identity</p>
+            
+            <input type="text" id="login-username" 
+                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
+                   placeholder="Username" autocomplete="username">
+            
+            <input type="password" id="login-password" 
+                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
+                   placeholder="Password" autocomplete="current-password">
+                   
+            <button id="login-button" 
+                    class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
+                Authenticate Identity
+            </button>
+            
+            <div class="text-center mt-4">
+                <p class="text-sm opacity-75">New user?</p>
+                <button id="show-register" class="text-matrix-green underline mt-1">
+                    Create New Identity
+                </button>
+            </div>
+            
+            <div id="login-status" class="py-2 px-3 bg-red-900 rounded-lg mb-4">
+                <span class="status-indicator offline"></span>
+                Disconnected from network
             </div>
         </div>
     </div>
@@ -357,8 +403,15 @@
             
             // DOM elements
             const registrationModal = document.getElementById('registration-modal');
+            const loginModal = document.getElementById('login-modal');
             const usernameInput = document.getElementById('username-input');
+            const passwordInput = document.getElementById('password-input');
             const registerButton = document.getElementById('register-button');
+            const loginUsername = document.getElementById('login-username');
+            const loginPassword = document.getElementById('login-password');
+            const loginButton = document.getElementById('login-button');
+            const showLogin = document.getElementById('show-login');
+            const showRegister = document.getElementById('show-register');
             const userInfo = document.getElementById('user-info');
             const appContainer = document.getElementById('app-container');
             const messageInput = document.getElementById('message-input');
@@ -540,8 +593,15 @@
             // Register user
             async function registerUser() {
                 const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                
                 if (!username) {
                     alert('Please enter a username');
+                    return;
+                }
+                
+                if (!password) {
+                    alert('Please enter a password');
                     return;
                 }
                 
@@ -579,9 +639,11 @@
                     }
                 }, 3000);
                 
-                // Register user with server - FIXED PARAMETERS
+                // Register user with server - FIXED: Added password parameter
                 socket.emit('register', {
-                    username: username
+                    username: username,
+                    password: password,
+                    publicKey: 'key-placeholder' // Server expects publicKey
                 }, (response) => {
                     clearTimeout(connectionTimeout);
                     
@@ -611,6 +673,76 @@
                         alert(`Registration failed: ${response.error}`);
                         registerButton.innerHTML = 'Generate Identity Keys';
                         registerButton.disabled = false;
+                    }
+                });
+            }
+            
+            // Login user
+            function loginUser() {
+                const username = loginUsername.value.trim();
+                const password = loginPassword.value;
+                
+                if (!username) {
+                    alert('Please enter a username');
+                    return;
+                }
+                
+                if (!password) {
+                    alert('Please enter a password');
+                    return;
+                }
+                
+                // Show authenticating message
+                loginButton.innerHTML = '<span class="spinner"></span> Authenticating...';
+                loginButton.disabled = true;
+                
+                // Connect to server
+                socket.connect();
+                
+                socket.emit('login', {
+                    username: username,
+                    password: password
+                }, (response) => {
+                    if (response.success) {
+                        // Initialize crypto
+                        initCrypto().then(async cryptoSuccess => {
+                            if (!cryptoSuccess) {
+                                showError('Encryption initialization failed', 'Failed to initialize encryption');
+                                return;
+                            }
+                            
+                            // Generate a key for the user
+                            const userKey = await generateKey();
+                            if (!userKey) {
+                                showError('Key generation failed', 'Failed to generate encryption keys');
+                                return;
+                            }
+                            
+                            currentUser.id = response.userId;
+                            currentUser.username = username;
+                            currentUser.key = userKey;
+                            
+                            // Update UI
+                            userInfo.textContent = username;
+                            loginModal.classList.add('hidden');
+                            appContainer.style.display = 'block';
+                            
+                            // Enable UI
+                            messageInput.disabled = false;
+                            sendButton.disabled = false;
+                            
+                            // Add system message
+                            addSystemMessage('Secure connection established with Sentinel-X network');
+                            addSystemMessage(`Welcome back, ${username}`);
+                            addSystemMessage('End-to-end encryption is active');
+                            
+                            // Load contacts
+                            loadContacts();
+                        });
+                    } else {
+                        alert(`Login failed: ${response.error}`);
+                        loginButton.innerHTML = 'Authenticate Identity';
+                        loginButton.disabled = false;
                     }
                 });
             }
@@ -808,11 +940,22 @@
             
             // Event listeners
             registerButton.addEventListener('click', registerUser);
+            loginButton.addEventListener('click', loginUser);
             sendButton.addEventListener('click', sendMessage);
             messageInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     sendMessage();
                 }
+            });
+            
+            showLogin.addEventListener('click', () => {
+                registrationModal.classList.add('hidden');
+                loginModal.classList.remove('hidden');
+            });
+            
+            showRegister.addEventListener('click', () => {
+                loginModal.classList.add('hidden');
+                registrationModal.classList.remove('hidden');
             });
             
             verifyOkButton.addEventListener('click', () => {
