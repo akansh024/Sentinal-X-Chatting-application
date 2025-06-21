@@ -161,6 +161,18 @@
             background-color: #0f0;
             border-radius: 3px;
         }
+        .spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #0f0;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-matrix-dark text-matrix-green font-mono">
@@ -460,10 +472,45 @@
                 }
             }
             
-            // Generate encryption key
-            async function generateKey() {
+            // Generate RSA key pair
+            async function generateKeyPair() {
                 try {
-                    const key = await window.crypto.subtle.generateKey(
+                    return await window.crypto.subtle.generateKey(
+                        {
+                            name: "RSA-OAEP",
+                            modulusLength: 2048,
+                            publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
+                            hash: "SHA-256",
+                        },
+                        true,
+                        ["encrypt", "decrypt"]
+                    );
+                } catch (error) {
+                    console.error('Key generation error:', error);
+                    return null;
+                }
+            }
+            
+            // Export public key as base64
+            async function exportPublicKey(key) {
+                const exported = await window.crypto.subtle.exportKey("spki", key);
+                return arrayBufferToBase64(exported);
+            }
+            
+            // Convert ArrayBuffer to Base64
+            function arrayBufferToBase64(buffer) {
+                let binary = '';
+                const bytes = new Uint8Array(buffer);
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binary);
+            }
+            
+            // Generate symmetric encryption key
+            async function generateSymmetricKey() {
+                try {
+                    return await window.crypto.subtle.generateKey(
                         {
                             name: "AES-GCM",
                             length: 256
@@ -471,10 +518,8 @@
                         true,
                         ["encrypt", "decrypt"]
                     );
-                    
-                    return key;
                 } catch (error) {
-                    console.error('Key generation error:', error);
+                    console.error('Symmetric key generation error:', error);
                     return null;
                 }
             }
@@ -547,14 +592,17 @@
                     return;
                 }
                 
-                // Generate a key for the user
-                const userKey = await generateKey();
-                if (!userKey) {
+                // Generate RSA key pair
+                const keyPair = await generateKeyPair();
+                if (!keyPair) {
                     registerButton.innerHTML = 'Generate Identity Keys';
                     registerButton.disabled = false;
                     showError('Key generation failed', 'Failed to generate encryption keys');
                     return;
                 }
+                
+                // Export public key
+                const publicKeyBase64 = await exportPublicKey(keyPair.publicKey);
                 
                 // Connect to server
                 socket.connect();
@@ -570,31 +618,37 @@
                 // Register user with server
                 socket.emit('register', {
                     username: username,
+                    publicKey: publicKeyBase64  // Fixed: Send public key to server
                 }, (response) => {
                     clearTimeout(connectionTimeout);
                     
                     if (response.success) {
                         currentUser.id = response.userId;
                         currentUser.username = username;
-                        currentUser.key = userKey;
+                        currentUser.keyPair = keyPair;
                         
-                        // Update UI
-                        userInfo.textContent = username;
-                        registrationModal.style.display = 'none';
-                        appContainer.style.display = 'block';
-                        
-                        // Enable UI
-                        messageInput.disabled = false;
-                        sendButton.disabled = false;
-                        
-                        // Add system message
-                        addSystemMessage('Secure connection established with Sentinel-X network');
-                        addSystemMessage(`Your user ID: ${response.userId}`);
-                        addSystemMessage('Your encryption keys have been generated locally');
-                        addSystemMessage('End-to-end encryption is active');
-                        
-                        // Load contacts
-                        loadContacts();
+                        // Generate symmetric key for messages
+                        generateSymmetricKey().then(symKey => {
+                            currentUser.symKey = symKey;
+                            
+                            // Update UI
+                            userInfo.textContent = username;
+                            registrationModal.style.display = 'none';
+                            appContainer.style.display = 'block';
+                            
+                            // Enable UI
+                            messageInput.disabled = false;
+                            sendButton.disabled = false;
+                            
+                            // Add system message
+                            addSystemMessage('Secure connection established with Sentinel-X network');
+                            addSystemMessage(`Your user ID: ${response.userId}`);
+                            addSystemMessage('Your encryption keys have been generated locally');
+                            addSystemMessage('End-to-end encryption is active');
+                            
+                            // Load contacts
+                            loadContacts();
+                        });
                     } else {
                         alert(`Registration failed: ${response.error}`);
                         registerButton.innerHTML = 'Generate Identity Keys';
@@ -775,7 +829,7 @@
                 // For real contacts
                 try {
                     // Encrypt the message
-                    const { ciphertext, iv } = await encryptMessage(message, currentUser.key);
+                    const { ciphertext, iv } = await encryptMessage(message, currentUser.symKey);
                     
                     // Add to UI immediately
                     addMessage(message, true);
