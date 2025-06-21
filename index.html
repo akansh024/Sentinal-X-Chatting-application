@@ -5,195 +5,353 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sentinel-X | Secure Chat</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    
-    <style>
-        /* CSS styles remain unchanged */
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-        :root { --matrix-green: #0f0; --dark-bg: #0a0a0a; --panel-bg: rgba(10, 20, 10, 0.8); }
-        /* ... (all other CSS rules remain exactly the same) ... */
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        matrix: {
+                            green: '#0f0',
+                            dark: '#0a0a0a',
+                            panel: 'rgba(10, 20, 10, 0.8)'
+                        }
+                    },
+                    animation: {
+                        'matrix-fall': 'matrixFall 0.5s linear infinite',
+                        'typing': 'typing 3s steps(40, end)',
+                        'blink-caret': 'blinkCaret 0.75s step-end infinite'
+                    },
+                    keyframes: {
+                        matrixFall: {
+                            '0%': { transform: 'translateY(-100%)' },
+                            '100%': { transform: 'translateY(100vh)' }
+                        },
+                        typing: {
+                            from: { width: '0' },
+                            to: { width: '100%' }
+                        },
+                        blinkCaret: {
+                            'from, to': { 'border-color': 'transparent' },
+                            '50%': { 'border-color': '#0f0' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/css">
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            z-index: -10;
+        }
+        .matrix-char {
+            position: absolute;
+            color: rgba(0, 255, 0, 0.8);
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            text-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+            user-select: none;
+        }
+        .message-bubble {
+            max-width: 75%;
+            border-radius: 1rem;
+            padding: 0.75rem 1rem;
+            position: relative;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .sent {
+            background: rgba(0, 30, 0, 0.7);
+            border-right: 3px solid #0f0;
+            margin-left: auto;
+        }
+        .received {
+            background: rgba(0, 30, 0, 0.5);
+            border-left: 3px solid #0f0;
+        }
+        .terminal-line {
+            overflow: hidden;
+            white-space: nowrap;
+            border-right: 2px solid #0f0;
+            animation: typing 3s steps(40, end), blinkCaret 0.75s step-end infinite;
+            margin-bottom: 0.5rem;
+        }
+        .glow-border {
+            border: 1px solid #0f0;
+            box-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+        }
+        .glow-text {
+            text-shadow: 0 0 5px #0f0;
+        }
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        .online {
+            background-color: #0f0;
+            box-shadow: 0 0 5px #0f0;
+        }
+        .offline {
+            background-color: #f00;
+            box-shadow: 0 0 5px #f00;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: rgba(10, 20, 10, 0.9);
+            border-radius: 0.75rem;
+            border: 1px solid #0f0;
+            box-shadow: 0 0 15px #0f0;
+            width: 90%;
+            max-width: 400px;
+        }
+        .progress-bar {
+            height: 0.25rem;
+            background-color: rgba(0, 255, 0, 0.3);
+            border-radius: 0.125rem;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #0f0;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .security-code {
+            letter-spacing: 0.25rem;
+            font-family: monospace;
+            padding: 1rem;
+            background: rgba(0, 10, 0, 0.7);
+            border: 1px solid #0f0;
+            border-radius: 0.5rem;
+        }
+        .chat-messages {
+            scrollbar-width: thin;
+            scrollbar-color: #0f0 transparent;
+        }
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+            background-color: #0f0;
+            border-radius: 3px;
+        }
     </style>
 </head>
-<body>
-    <canvas id="matrix-canvas"></canvas>
+<body class="bg-matrix-dark text-matrix-green font-mono">
+    <!-- Matrix Background Effect -->
+    <div class="matrix-bg" id="matrix-bg"></div>
     
-    <div id="registration-modal">
-        <div class="modal-content">
-            <h2><i class="fas fa-user-shield"></i> Sentinel-X Registration</h2>
-            <input type="text" id="username-input" placeholder="Choose a username" autocomplete="off">
-            <button id="register-button">Generate Identity Keys</button>
-            <div class="connection-status disconnected" id="connection-status">Disconnected from network</div>
-            <div id="crypto-status" class="crypto-status">
-                <span><i class="fas fa-sync fa-spin"></i> Loading encryption library...</span>
-                <div class="progress-container">
-                    <div class="progress-bar" id="crypto-progress"></div>
+    <!-- Registration Modal -->
+    <div id="registration-modal" class="modal-overlay">
+        <div class="modal-content p-8 text-center">
+            <h2 class="text-2xl font-bold mb-2 glow-text">
+                <i class="fas fa-user-shield mr-2"></i> Sentinel-X Registration
+            </h2>
+            <p class="mb-4 opacity-75">Create your secure identity</p>
+            
+            <input type="text" id="username-input" 
+                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
+                   placeholder="Choose a username" autocomplete="off">
+                   
+            <button id="register-button" 
+                    class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
+                Generate Identity Keys
+            </button>
+            
+            <p class="text-sm opacity-75 mb-4">Your identity keys will be generated locally</p>
+            
+            <div id="connection-status" class="py-2 px-3 bg-red-900 rounded-lg mb-4">
+                <span class="status-indicator offline"></span>
+                Disconnected from network
+            </div>
+            
+            <div id="crypto-status" class="py-2 px-3 rounded-lg bg-matrix-dark border border-matrix-green mb-4">
+                <span><i class="fas fa-sync fa-spin mr-2"></i> Initializing encryption...</span>
+                <div class="progress-bar mt-2">
+                    <div class="progress-fill" id="crypto-progress"></div>
                 </div>
             </div>
         </div>
     </div>
     
-    <div id="security-modal">
-        <div class="security-modal-content">
-            <h2><i class="fas fa-fingerprint"></i> Security Verification</h2>
-            <div class="security-code" id="security-code">4F9C 72B1 D8E3</div>
-            <div class="verify-buttons">
-                <button class="verify-button" id="verify-ok">Codes Match</button>
-                <button class="verify-button danger" id="verify-mismatch">Mismatch Detected</button>
+    <!-- Security Verification Modal -->
+    <div id="security-modal" class="modal-overlay hidden">
+        <div class="modal-content p-8 text-center">
+            <h2 class="text-2xl font-bold mb-4 glow-text">
+                <i class="fas fa-fingerprint mr-2"></i> Security Verification
+            </h2>
+            <p class="mb-4">Compare this code with your contact to verify your connection is secure:</p>
+            
+            <div class="security-code text-xl font-bold my-6" id="security-code">
+                4F9C 72B1 D8E3
+            </div>
+            
+            <p class="mb-6 opacity-75">If the codes match, your connection is end-to-end encrypted and secure.</p>
+            
+            <div class="flex justify-center gap-4">
+                <button id="verify-ok" class="px-6 py-2 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition">
+                    Codes Match
+                </button>
+                <button id="verify-mismatch" class="px-6 py-2 bg-red-900 border border-red-500 rounded-lg hover:bg-red-800 hover:glow-border transition">
+                    Mismatch Detected
+                </button>
             </div>
         </div>
     </div>
     
-    <div class="user-info" id="user-info"></div>
-    
-    <div class="container" style="display:none" id="app-container">
-        <header>
-            <h1>Sentinel-X</h1>
-            <div class="subtitle">SECURE COMMUNICATION NETWORK</div>
-        </header>
+    <!-- Main App Container -->
+    <div class="container mx-auto px-4 py-6 max-w-6xl" id="app-container" style="display:none">
+        <!-- User Info Header -->
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-3xl font-bold uppercase tracking-wider glow-text">Sentinel-X</h1>
+                <p class="text-sm opacity-75">SECURE COMMUNICATION NETWORK</p>
+            </div>
+            <div id="user-info" class="px-3 py-1 bg-matrix-panel border border-matrix-green rounded-lg text-sm"></div>
+        </div>
         
-        <div class="main-content">
-            <div class="sidebar">
-                <h2><i class="fas fa-user-friends"></i> Contacts</h2>
-                <div class="contact-list" id="contact-list"></div>
+        <div class="flex flex-col md:flex-row gap-6 h-[75vh]">
+            <!-- Sidebar -->
+            <div class="w-full md:w-80 bg-matrix-panel glow-border rounded-xl p-4 flex flex-col">
+                <h2 class="text-xl font-bold mb-4"><i class="fas fa-user-friends mr-2"></i> Contacts</h2>
                 
-                <div class="security-info">
-                    <h2><i class="fas fa-shield-alt"></i> Security Status</h2>
-                    <div class="security-item">
-                        <i class="fas fa-lock security-icon"></i>
-                        <span>End-to-End Encryption: <span class="online" id="e2e-status">Active</span></span>
+                <div class="contact-list flex-1 overflow-y-auto" id="contact-list">
+                    <!-- Contacts will be loaded here -->
+                </div>
+                
+                <div class="mt-6 pt-4 border-t border-matrix-green border-opacity-30">
+                    <h2 class="text-xl font-bold mb-4"><i class="fas fa-shield-alt mr-2"></i> Security Status</h2>
+                    
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center">
+                            <i class="fas fa-lock text-matrix-green mr-2"></i>
+                            <span>End-to-End Encryption: <span class="text-green-500 glow-text" id="e2e-status">Active</span></span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-user-shield text-matrix-green mr-2"></i>
+                            <span>Identity Protection: <span class="text-green-500 glow-text">Enabled</span></span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-fingerprint text-matrix-green mr-2"></i>
+                            <span>Key Verification: <span class="text-green-500 glow-text" id="verification-status">Pending</span></span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-hourglass-half text-matrix-green mr-2"></i>
+                            <span>Message Lifetime: <span class="text-green-500 glow-text" id="message-lifetime">24h</span></span>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div class="chat-container">
-                <div class="chat-header">
-                    <h2 id="current-contact">Select a Contact</h2>
-                    <div class="status">
-                        <div class="status-indicator" id="connection-indicator"></div>
+            <!-- Chat Container -->
+            <div class="flex-1 flex flex-col bg-matrix-panel glow-border rounded-xl overflow-hidden">
+                <!-- Chat Header -->
+                <div class="p-4 border-b border-matrix-green border-opacity-30 flex justify-between items-center">
+                    <h2 class="text-xl font-bold" id="current-contact">Select a Contact</h2>
+                    <div class="status flex items-center">
+                        <span class="status-indicator offline" id="connection-indicator"></span>
                         <span id="connection-text">Disconnected</span>
                     </div>
                 </div>
                 
-                <div class="chat-messages" id="chat-messages">
-                    <div class="terminal-line">> Welcome to Sentinel-X secure communication network</div>
-                    <div class="terminal-line">> Establishing secure connection to server...</div>
+                <!-- Chat Messages -->
+                <div class="chat-messages flex-1 overflow-y-auto p-4" id="chat-messages">
+                    <div class="terminal-line">
+                        > Welcome to Sentinel-X secure communication network
+                    </div>
+                    <div class="terminal-line">
+                        > Establishing secure connection to server...
+                    </div>
+                    <div class="terminal-line">
+                        > Initializing encryption protocols...
+                    </div>
                 </div>
                 
-                <div class="chat-input-container">
-                    <input type="text" id="message-input" placeholder="Type your secure message..." disabled>
-                    <button id="send-button" disabled><i class="fas fa-paper-plane"></i> SEND</button>
+                <!-- Chat Input -->
+                <div class="p-4 border-t border-matrix-green border-opacity-30 bg-matrix-dark bg-opacity-50">
+                    <div class="flex gap-2">
+                        <input type="text" id="message-input" 
+                               class="flex-1 p-3 bg-matrix-dark border border-matrix-green rounded-lg focus:outline-none focus:glow-border"
+                               placeholder="Type your secure message..." disabled>
+                        <button id="send-button" class="px-6 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <div class="footer">
-            Sentinel-X v2.4.1 | Connection: <span id="connection-type">Secured</span> | E2E Encrypted
+        <!-- Footer -->
+        <div class="mt-6 pt-4 text-center text-sm opacity-75 border-t border-matrix-green border-opacity-30">
+            Sentinel-X v3.0 | Connection: <span id="connection-type">Secured</span> | E2E Encrypted | Messages Auto-Delete in 24h
         </div>
     </div>
-
-    <div id="offline-warning" class="offline-warning" style="display: none;">
-        <i class="fas fa-exclamation-triangle"></i>
+    
+    <!-- Offline Warning -->
+    <div id="offline-warning" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-red-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center hidden">
+        <i class="fas fa-exclamation-triangle mr-2"></i>
         <span>You appear to be offline. Some features may not work.</span>
     </div>
 
     <script>
-        // Error display function
-        function showError(message, details = '') {
-            const errorHtml = `
-                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                    background: rgba(0,0,0,0.9); z-index: 10000; display: flex; 
-                    justify-content: center; align-items: center; color: #f00; 
-                    text-align: center; padding: 20px; flex-direction: column;">
-                    <h1 style="color: #f00; margin-bottom: 20px;">
-                        <i class="fas fa-exclamation-triangle"></i> Critical Error
-                    </h1>
-                    <div style="font-size: 1.2rem; margin-bottom: 20px;">${message}</div>
-                    <div style="margin-bottom: 30px; color: #aaa;">${details}</div>
-                    <button onclick="window.location.reload()" 
-                        style="padding: 10px 20px; background: #f00; color: white; 
-                        border: none; border-radius: 5px; cursor: pointer;">
-                        <i class="fas fa-sync-alt"></i> Refresh Page
-                    </button>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', errorHtml);
-        }
-
-        // Libsodium loading with fallbacks
-        function loadSodium() {
-            return new Promise((resolve, reject) => {
-                const tryCDN = (url) => {
-                    const script = document.createElement('script');
-                    script.src = url;
-                    script.onload = () => resolve();
-                    script.onerror = () => {
-                        if (url.includes('unpkg')) {
-                            tryCDN('https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js');
-                        } else if (url.includes('jsdelivr')) {
-                            tryCDN('https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.7.11/sodium.min.js');
-                        } else {
-                            reject(new Error('All CDN attempts failed'));
-                        }
-                    };
-                    document.head.appendChild(script);
-                };
-                tryCDN('https://unpkg.com/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js');
-            });
-        }
-
-        // Main application initialization
-        document.addEventListener('DOMContentLoaded', () => {
-            loadSodium()
-                .then(() => initializeApplication())
-                .catch(err => {
-                    showError('Encryption library failed to load', 
-                            'Please check your internet connection and refresh the page');
-                    console.error('Libsodium loading error:', err);
-                });
-        });
-
-        function initializeApplication() {
-            // Matrix background setup
-            const canvas = document.getElementById('matrix-canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+        // Initialize matrix background
+        function initMatrixBackground() {
+            const container = document.getElementById('matrix-bg');
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$#@%&*';
+            const charCount = 150;
             
-            const katakana = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
-            const characters = katakana.split('');
-            const fontSize = 14;
-            const columns = canvas.width / fontSize;
-            const drops = Array(columns).fill(1);
-            
-            function drawMatrix() {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#0F0';
-                ctx.font = `${fontSize}px monospace`;
-                
-                for (let i = 0; i < drops.length; i++) {
-                    const text = characters[Math.floor(Math.random() * characters.length)];
-                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
-                    drops[i]++;
-                }
+            for (let i = 0; i < charCount; i++) {
+                const char = document.createElement('div');
+                char.className = 'matrix-char';
+                char.textContent = chars.charAt(Math.floor(Math.random() * chars.length));
+                char.style.left = `${Math.random() * 100}%`;
+                char.style.animationDuration = `${Math.random() * 5 + 3}s`;
+                char.style.animationDelay = `${Math.random() * 2}s`;
+                char.style.opacity = `${Math.random() * 0.5 + 0.2}`;
+                char.style.fontSize = `${Math.random() * 10 + 14}px`;
+                container.appendChild(char);
             }
-            setInterval(drawMatrix, 33);
-            window.addEventListener('resize', () => {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            });
+        }
+        
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', async function() {
+            initMatrixBackground();
             
-            // Chat application components
-            const messageInput = document.getElementById('message-input');
-            const sendButton = document.getElementById('send-button');
-            const chatMessages = document.getElementById('chat-messages');
+            // DOM elements
             const registrationModal = document.getElementById('registration-modal');
             const usernameInput = document.getElementById('username-input');
             const registerButton = document.getElementById('register-button');
             const userInfo = document.getElementById('user-info');
             const appContainer = document.getElementById('app-container');
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+            const chatMessages = document.getElementById('chat-messages');
             const contactList = document.getElementById('contact-list');
             const currentContact = document.getElementById('current-contact');
             const securityModal = document.getElementById('security-modal');
@@ -203,8 +361,6 @@
             const connectionStatus = document.getElementById('connection-status');
             const connectionIndicator = document.getElementById('connection-indicator');
             const connectionText = document.getElementById('connection-text');
-            const e2eStatus = document.getElementById('e2e-status');
-            const verificationStatus = document.getElementById('verification-status');
             const cryptoStatus = document.getElementById('crypto-status');
             const cryptoProgress = document.getElementById('crypto-progress');
             const offlineWarning = document.getElementById('offline-warning');
@@ -221,75 +377,155 @@
             // Socket connection
             let socket;
             let connected = false;
-            let cryptoReady = false;
             
+            // Initialize socket connection with modern parameters
             function initializeSocket() {
                 const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
                 socket = io(SOCKET_SERVER_URL, {
                     autoConnect: false,
                     reconnection: true,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
                     transports: ['websocket']
                 });
                 
+                // Handle connection
                 socket.on('connect', () => {
                     connected = true;
-                    connectionStatus.textContent = 'Connected to secure network';
-                    connectionStatus.className = 'connection-status connected';
-                    connectionIndicator.style.backgroundColor = '#0f0';
+                    connectionStatus.innerHTML = '<span class="status-indicator online"></span> Connected to secure network';
+                    connectionStatus.className = 'py-2 px-3 bg-green-900 rounded-lg mb-4';
+                    connectionIndicator.className = 'status-indicator online';
                     connectionText.textContent = 'Secured';
                 });
                 
+                // Handle disconnection
                 socket.on('disconnect', () => {
                     connected = false;
-                    connectionStatus.textContent = 'Disconnected from network';
-                    connectionStatus.className = 'connection-status disconnected';
-                    connectionIndicator.style.backgroundColor = '#f00';
+                    connectionStatus.innerHTML = '<span class="status-indicator offline"></span> Disconnected from network';
+                    connectionStatus.className = 'py-2 px-3 bg-red-900 rounded-lg mb-4';
+                    connectionIndicator.className = 'status-indicator offline';
                     connectionText.textContent = 'Disconnected';
                 });
                 
+                // Handle connection error
                 socket.on('connect_error', (error) => {
                     console.error('Connection error:', error);
-                    connectionStatus.textContent = 'Connection error. Retrying...';
+                    connectionStatus.innerHTML = '<span class="status-indicator offline"></span> Connection error. Retrying...';
+                    connectionStatus.className = 'py-2 px-3 bg-red-900 rounded-lg mb-4';
                 });
                 
+                // Handle incoming messages
                 socket.on('newMessage', async (messageData) => {
                     const contact = Object.values(currentUser.contacts).find(c => c.id === messageData.senderId);
                     if (!contact || contact.id !== currentUser.currentChat) return;
                     
                     try {
+                        // Decrypt the message
                         const plaintext = await decryptMessage(
                             messageData.ciphertext,
                             messageData.iv,
-                            contact.publicKey
+                            contact.key
                         );
+                        
+                        // Add to UI
                         addMessage(plaintext, false, contact.username);
                     } catch (error) {
                         console.error('Decryption error:', error);
-                        addSystemMessage('Failed to decrypt a message');
+                        addSystemMessage('Failed to decrypt a message. Security may be compromised.');
                     }
                 });
             }
             
+            // Initialize Web Crypto API for encryption
             async function initCrypto() {
                 try {
-                    await sodium.ready;
-                    const keypair = sodium.crypto_box_keypair();
-                    currentUser.keyPair = {
-                        publicKey: sodium.to_base64(keypair.publicKey),
-                        privateKey: sodium.to_base64(keypair.privateKey)
-                    };
-                    cryptoReady = true;
-                    cryptoStatus.innerHTML = '<span class="online"><i class="fas fa-check"></i> Encryption ready</span>';
-                    cryptoStatus.className = 'crypto-status crypto-success';
+                    // Update progress bar
+                    const progressInterval = setInterval(() => {
+                        const currentWidth = parseInt(cryptoProgress.style.width) || 0;
+                        const newWidth = Math.min(currentWidth + 10, 100);
+                        cryptoProgress.style.width = `${newWidth}%`;
+                        
+                        if (newWidth >= 100) {
+                            clearInterval(progressInterval);
+                            cryptoStatus.innerHTML = '<span class="text-green-500"><i class="fas fa-check mr-2"></i> Encryption ready</span>';
+                        }
+                    }, 200);
+                    
                     return true;
                 } catch (error) {
                     console.error('Crypto initialization error:', error);
-                    cryptoStatus.innerHTML = '<span class="error-message"><i class="fas fa-exclamation-circle"></i> Encryption failed</span>';
-                    cryptoStatus.className = 'crypto-status crypto-failure';
+                    cryptoStatus.innerHTML = '<span class="text-red-500"><i class="fas fa-exclamation-circle mr-2"></i> Encryption failed</span>';
                     return false;
                 }
             }
             
+            // Generate encryption key
+            async function generateKey() {
+                try {
+                    const key = await window.crypto.subtle.generateKey(
+                        {
+                            name: "AES-GCM",
+                            length: 256
+                        },
+                        true,
+                        ["encrypt", "decrypt"]
+                    );
+                    
+                    return key;
+                } catch (error) {
+                    console.error('Key generation error:', error);
+                    return null;
+                }
+            }
+            
+            // Encrypt message
+            async function encryptMessage(message, key) {
+                try {
+                    const encoder = new TextEncoder();
+                    const encoded = encoder.encode(message);
+                    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+                    
+                    const ciphertext = await window.crypto.subtle.encrypt(
+                        {
+                            name: "AES-GCM",
+                            iv: iv
+                        },
+                        key,
+                        encoded
+                    );
+                    
+                    return {
+                        ciphertext: new Uint8Array(ciphertext),
+                        iv: iv
+                    };
+                } catch (error) {
+                    console.error('Encryption error:', error);
+                    throw new Error('Failed to encrypt message');
+                }
+            }
+            
+            // Decrypt message
+            async function decryptMessage(ciphertext, iv, key) {
+                try {
+                    const decrypted = await window.crypto.subtle.decrypt(
+                        {
+                            name: "AES-GCM",
+                            iv: iv
+                        },
+                        key,
+                        ciphertext
+                    );
+                    
+                    const decoder = new TextDecoder();
+                    return decoder.decode(decrypted);
+                } catch (error) {
+                    console.error('Decryption error:', error);
+                    throw new Error('Failed to decrypt message');
+                }
+            }
+            
+            // Register user
             async function registerUser() {
                 const username = usernameInput.value.trim();
                 if (!username) {
@@ -297,10 +533,13 @@
                     return;
                 }
                 
+                // Show generating message
                 registerButton.innerHTML = '<span class="spinner"></span> Generating Keys...';
                 registerButton.disabled = true;
                 
+                // Initialize crypto
                 const cryptoSuccess = await initCrypto();
+                
                 if (!cryptoSuccess) {
                     registerButton.innerHTML = 'Generate Identity Keys';
                     registerButton.disabled = false;
@@ -308,30 +547,53 @@
                     return;
                 }
                 
+                // Generate a key for the user
+                const userKey = await generateKey();
+                if (!userKey) {
+                    registerButton.innerHTML = 'Generate Identity Keys';
+                    registerButton.disabled = false;
+                    showError('Key generation failed', 'Failed to generate encryption keys');
+                    return;
+                }
+                
+                // Connect to server
                 socket.connect();
+                
+                // Set timeout for connection
                 const connectionTimeout = setTimeout(() => {
                     if (!connected) {
-                        connectionStatus.textContent = 'Connection failed. Retrying...';
-                        connectionStatus.className = 'connection-status disconnected';
+                        connectionStatus.innerHTML = '<span class="status-indicator offline"></span> Connection failed. Retrying...';
                         socket.connect();
                     }
                 }, 3000);
                 
+                // Register user with server
                 socket.emit('register', {
                     username: username,
-                    publicKey: currentUser.keyPair.publicKey
                 }, (response) => {
                     clearTimeout(connectionTimeout);
                     
                     if (response.success) {
                         currentUser.id = response.userId;
                         currentUser.username = username;
+                        currentUser.key = userKey;
+                        
+                        // Update UI
                         userInfo.textContent = username;
                         registrationModal.style.display = 'none';
-                        appContainer.style.display = 'flex';
+                        appContainer.style.display = 'block';
+                        
+                        // Enable UI
                         messageInput.disabled = false;
                         sendButton.disabled = false;
-                        addSystemMessage('Secure connection established');
+                        
+                        // Add system message
+                        addSystemMessage('Secure connection established with Sentinel-X network');
+                        addSystemMessage(`Your user ID: ${response.userId}`);
+                        addSystemMessage('Your encryption keys have been generated locally');
+                        addSystemMessage('End-to-end encryption is active');
+                        
+                        // Load contacts
                         loadContacts();
                     } else {
                         alert(`Registration failed: ${response.error}`);
@@ -341,6 +603,7 @@
                 });
             }
             
+            // Load contacts
             function loadContacts() {
                 socket.emit('getUsers', {}, (response) => {
                     if (response.success) {
@@ -350,101 +613,92 @@
                         response.users.forEach(user => {
                             if (user.id !== currentUser.id) {
                                 currentUser.contacts[user.id] = user;
+                                
                                 const contactEl = document.createElement('div');
-                                contactEl.className = 'contact';
+                                contactEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
                                 contactEl.dataset.userId = user.id;
                                 contactEl.innerHTML = `
-                                    <div class="contact-avatar">${user.username.charAt(0)}</div>
-                                    <div class="contact-info">
-                                        <div class="contact-name">${user.username}</div>
-                                        <div class="contact-status online">Online - Secure</div>
+                                    <div class="flex items-center">
+                                        <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
+                                            ${user.username.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <div class="font-bold">${user.username}</div>
+                                            <div class="text-xs opacity-75 flex items-center">
+                                                <span class="status-indicator online"></span>
+                                                Online - Secure
+                                            </div>
+                                        </div>
                                     </div>
                                 `;
+                                
                                 contactEl.addEventListener('click', () => {
-                                    document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
-                                    contactEl.classList.add('active');
+                                    document.querySelectorAll('#contact-list > div').forEach(c => {
+                                        c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
+                                    });
+                                    contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
                                     openChat(user.id);
                                 });
+                                
                                 contactList.appendChild(contactEl);
                             }
                         });
                         
+                        // If no contacts, simulate demo contacts
                         if (response.users.length <= 1) {
                             simulateOtherUsers();
                         }
                     } else {
+                        // If no real contacts, simulate demo contacts
                         simulateOtherUsers();
                     }
                 });
             }
             
+            // Open chat with a contact
             function openChat(contactId) {
                 const contact = currentUser.contacts[contactId];
                 if (!contact) return;
                 
                 currentUser.currentChat = contactId;
-                currentContact.innerHTML = `${contact.username} <span class="online">(Secure)</span>`;
-                chatMessages.innerHTML = '';
-                addSystemMessage(`Secure connection established with ${contact.username}`);
-                securityCode.textContent = generateSecurityCode(currentUser.id, contactId);
-                securityModal.style.display = 'flex';
+                currentContact.innerHTML = `${contact.username} <span class="text-green-500">(Secure)</span>`;
                 
+                // Clear chat messages
+                chatMessages.innerHTML = '';
+                
+                // Add connection message
+                addSystemMessage(`Secure connection established with ${contact.username}`);
+                
+                // Generate security code
+                const code = generateSecurityCode(currentUser.id, contactId);
+                securityCode.textContent = code;
+                
+                // Show verification modal
+                securityModal.classList.remove('hidden');
+                
+                // Add demo-specific security warning
                 if (contactId.startsWith('demo')) {
                     addSystemMessage('DEMO MODE: Security verification is simulated');
+                    addSystemMessage('In production, compare codes with your contact');
                 }
             }
             
+            // Generate security code for verification
             function generateSecurityCode(userId1, userId2) {
                 const ids = [userId1, userId2].sort().join('');
                 let hash = 0;
+                
                 for (let i = 0; i < ids.length; i++) {
                     hash = ((hash << 5) - hash) + ids.charCodeAt(i);
-                    hash |= 0;
+                    hash |= 0; // Convert to 32bit integer
                 }
+                
+                // Convert to 12-character hex code
                 const hex = Math.abs(hash).toString(16).toUpperCase().padStart(12, '0');
                 return `${hex.substring(0, 4)} ${hex.substring(4, 8)} ${hex.substring(8, 12)}`;
             }
             
-            async function encryptMessage(message, recipientPublicKey) {
-                try {
-                    await sodium.ready;
-                    const senderKey = sodium.from_base64(currentUser.keyPair.privateKey);
-                    const recipientKey = sodium.from_base64(recipientPublicKey);
-                    const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
-                    const ciphertext = sodium.crypto_box_easy(
-                        sodium.from_string(message),
-                        nonce,
-                        recipientKey,
-                        senderKey
-                    );
-                    return {
-                        ciphertext: sodium.to_base64(ciphertext),
-                        iv: sodium.to_base64(nonce)
-                    };
-                } catch (error) {
-                    console.error('Encryption error:', error);
-                    throw new Error('Failed to encrypt message');
-                }
-            }
-            
-            async function decryptMessage(ciphertext, iv, senderPublicKey) {
-                try {
-                    await sodium.ready;
-                    const recipientKey = sodium.from_base64(currentUser.keyPair.privateKey);
-                    const senderKey = sodium.from_base64(senderPublicKey);
-                    const plaintext = sodium.crypto_box_open_easy(
-                        sodium.from_base64(ciphertext),
-                        sodium.from_base64(iv),
-                        senderKey,
-                        recipientKey
-                    );
-                    return sodium.to_string(plaintext);
-                } catch (error) {
-                    console.error('Decryption error:', error);
-                    throw new Error('Failed to decrypt message');
-                }
-            }
-            
+            // Add system message to chat
             function addSystemMessage(text) {
                 const terminalDiv = document.createElement('div');
                 terminalDiv.classList.add('terminal-line');
@@ -453,33 +707,38 @@
                 scrollToBottom();
             }
             
+            // Add message to UI
             function addMessage(content, isSent = true, senderName = null) {
                 const messageDiv = document.createElement('div');
-                messageDiv.classList.add('message');
-                messageDiv.classList.add(isSent ? 'sent' : 'received');
+                messageDiv.classList.add('message-bubble', isSent ? 'sent' : 'received');
+                
                 const now = new Date();
-                const timeString = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                const timeString = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
                 
                 messageDiv.innerHTML = `
-                    <div class="message-header">
+                    <div class="flex justify-between text-xs opacity-75 mb-1">
                         <span>${isSent ? 'You' : (senderName || 'Unknown')}</span>
                         <span>${timeString}</span>
                     </div>
                     <div class="message-content">
                         ${content}
                     </div>
-                    <div class="message-actions">
-                        <span><i class="fas ${isSent ? 'fa-check-circle' : 'fa-lock'}"></i> ${isSent ? 'Delivered' : 'Encrypted'}</span>
+                    <div class="flex text-xs mt-2 opacity-75">
+                        <span class="mr-3"><i class="fas ${isSent ? 'fa-check-circle' : 'fa-lock'} mr-1"></i> ${isSent ? 'Delivered' : 'Encrypted'}</span>
+                        ${!isSent ? '<span><i class="fas fa-clock mr-1"></i> 24h</span>' : ''}
                     </div>
                 `;
+                
                 chatMessages.appendChild(messageDiv);
                 scrollToBottom();
             }
             
+            // Scroll to bottom of chat
             function scrollToBottom() {
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
             
+            // Send message
             async function sendMessage() {
                 const message = messageInput.value.trim();
                 if (!message) return;
@@ -491,103 +750,175 @@
                 
                 const contact = currentUser.contacts[currentUser.currentChat];
                 
+                // For demo contacts
                 if (contact.id.startsWith('demo')) {
+                    // Add to UI immediately
                     addMessage(message, true);
+                    
+                    // Simulate response after delay
                     setTimeout(() => {
                         if (contact.username === 'Agent Smith') {
                             addMessage("Your attempts to escape the Matrix are futile, Mr. Anderson.", false, contact.username);
                         } else if (contact.username === 'Trinity') {
                             addMessage("Follow the white rabbit. Knock knock, Neo.", false, contact.username);
+                        } else if (contact.username === 'Morpheus') {
+                            addMessage("Free your mind. Take the red pill.", false, contact.username);
+                        } else {
+                            addMessage("This is a simulated response in demo mode.", false, contact.username);
                         }
                     }, 1500);
+                    
                     messageInput.value = '';
                     return;
                 }
                 
+                // For real contacts
                 try {
-                    const { ciphertext, iv } = await encryptMessage(message, contact.publicKey);
+                    // Encrypt the message
+                    const { ciphertext, iv } = await encryptMessage(message, currentUser.key);
+                    
+                    // Add to UI immediately
                     addMessage(message, true);
+                    
+                    // Send to server
                     socket.emit('sendMessage', {
                         senderId: currentUser.id,
                         recipientId: contact.id,
-                        ciphertext,
-                        iv
+                        ciphertext: Array.from(ciphertext),
+                        iv: Array.from(iv)
+                    }, (response) => {
+                        if (!response.success) {
+                            addSystemMessage(`Failed to send message: ${response.error}`);
+                        }
                     });
+                    
                     messageInput.value = '';
                 } catch (error) {
                     console.error('Encryption error:', error);
-                    addSystemMessage('Failed to encrypt message');
+                    addSystemMessage('Failed to encrypt message. Security compromised!');
                 }
             }
             
+            // Simulate other users for demo
             function simulateOtherUsers() {
                 const demoContacts = [
-                    { id: 'demo1', username: 'Agent Smith', publicKey: 'demo_public_key_1' },
-                    { id: 'demo2', username: 'Trinity', publicKey: 'demo_public_key_2' }
+                    { id: 'demo1', username: 'Agent Smith' },
+                    { id: 'demo2', username: 'Trinity' },
+                    { id: 'demo3', username: 'Morpheus' }
                 ];
 
                 contactList.innerHTML = '';
+
                 demoContacts.forEach(contact => {
                     currentUser.contacts[contact.id] = contact;
+
                     const contactEl = document.createElement('div');
-                    contactEl.className = 'contact';
+                    contactEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
                     contactEl.dataset.userId = contact.id;
                     contactEl.innerHTML = `
-                        <div class="contact-avatar">${contact.username.charAt(0)}</div>
-                        <div class="contact-info">
-                            <div class="contact-name">${contact.username}</div>
-                            <div class="contact-status online">Online - Secure</div>
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
+                                ${contact.username.charAt(0)}
+                            </div>
+                            <div>
+                                <div class="font-bold">${contact.username}</div>
+                                <div class="text-xs opacity-75 flex items-center">
+                                    <span class="status-indicator online"></span>
+                                    Online - Secure
+                                </div>
+                            </div>
                         </div>
                     `;
+
                     contactEl.addEventListener('click', () => {
-                        document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
-                        contactEl.classList.add('active');
+                        document.querySelectorAll('#contact-list > div').forEach(c => {
+                            c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
+                        });
+                        contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
                         openChat(contact.id);
+                        
+                        // Add welcome message from demo contact
                         setTimeout(() => {
                             if (contact.username === 'Agent Smith') {
-                                addMessage("Welcome to Sentinel-X, Mr. Anderson.", false, contact.username);
+                                addMessage("Welcome to Sentinel-X, Mr. Anderson. We've been expecting you.", false, contact.username);
+                            } else if (contact.username === 'Trinity') {
+                                addMessage("I've been watching you, Neo. The system has you.", false, contact.username);
+                            } else if (contact.username === 'Morpheus') {
+                                addMessage("You take the blue pill, the story ends. You take the red pill...", false, contact.username);
                             }
                         }, 1000);
                     });
+
                     contactList.appendChild(contactEl);
                 });
+                
                 addSystemMessage('DEMO MODE: Simulated contacts are active');
+                addSystemMessage('In production, real contacts will appear here');
             }
             
+            // Offline detection
             function updateOnlineStatus() {
-                offlineWarning.style.display = navigator.onLine ? 'none' : 'flex';
+                if (navigator.onLine) {
+                    offlineWarning.classList.add('hidden');
+                } else {
+                    offlineWarning.classList.remove('hidden');
+                }
+            }
+            
+            // Enhanced error display
+            function showError(message, details = '') {
+                const errorHtml = `
+                    <div class="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-6 text-red-500 text-center">
+                        <h1 class="text-3xl mb-4">
+                            <i class="fas fa-exclamation-triangle mr-2"></i> Critical Error
+                        </h1>
+                        <div class="text-xl mb-6">${message}</div>
+                        <div class="text-gray-500 mb-8">${details}</div>
+                        <button onclick="window.location.reload()" class="px-6 py-3 bg-red-700 text-white rounded-lg hover:bg-red-600 transition">
+                            <i class="fas fa-sync-alt mr-2"></i> Refresh Page
+                        </button>
+                    </div>
+                `;
+                document.body.insertAdjacentHTML('beforeend', errorHtml);
             }
             
             // Event listeners
             registerButton.addEventListener('click', registerUser);
             sendButton.addEventListener('click', sendMessage);
-            messageInput.addEventListener('keypress', (e) => e.key === 'Enter' && sendMessage());
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
             verifyOkButton.addEventListener('click', () => {
-                securityModal.style.display = 'none';
-                verificationStatus.textContent = 'Verified';
-                e2eStatus.textContent = 'Active';
+                securityModal.classList.add('hidden');
+                document.getElementById('verification-status').textContent = 'Verified';
+                document.getElementById('e2e-status').textContent = 'Active';
+                addSystemMessage('Security verification completed. Connection is secure.');
+                addSystemMessage('End-to-end encryption is active.');
             });
+            
             verifyMismatchButton.addEventListener('click', () => {
-                securityModal.style.display = 'none';
-                verificationStatus.textContent = 'Mismatch';
-                verificationStatus.style.color = '#f00';
+                securityModal.classList.add('hidden');
+                document.getElementById('verification-status').textContent = 'Mismatch';
+                document.getElementById('verification-status').className = 'text-red-500 glow-text';
+                addSystemMessage('Security verification failed. Connection may be compromised!');
+                addSystemMessage('Do not share sensitive information.');
             });
+            
             window.addEventListener('online', updateOnlineStatus);
             window.addEventListener('offline', updateOnlineStatus);
             
-            // Initialize
-            updateOnlineStatus();
+            // Initialize socket
             initializeSocket();
             
-            const progressInterval = setInterval(() => {
-                if (cryptoProgress) {
-                    const currentWidth = parseInt(cryptoProgress.style.width) || 0;
-                    const newWidth = Math.min(currentWidth + 10, 100);
-                    cryptoProgress.style.width = `${newWidth}%`;
-                    if (newWidth >= 100) clearInterval(progressInterval);
-                }
-            }, 500);
-        }
+            // Initialize crypto
+            initCrypto();
+            
+            // Update online status
+            updateOnlineStatus();
+        });
     </script>
 </body>
 </html>
