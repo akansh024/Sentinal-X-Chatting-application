@@ -271,6 +271,17 @@
         .encrypt-animation {
             animation: encrypt 1.5s infinite;
         }
+        
+        /* Loading spinner */
+        .loader {
+            border: 4px solid rgba(0, 255, 0, 0.1);
+            border-top: 4px solid var(--matrix-green);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
     </style>
 </head>
 <body class="bg-black text-green-500">
@@ -728,7 +739,7 @@
                         { 
                             id: data.user.id, 
                             username: username,
-                            updated_at: new Date()
+                            created_at: new Date()
                         }
                     ]);
                 
@@ -807,16 +818,15 @@
         // Load contacts
         async function loadContacts() {
             try {
-                // In a real app, we would fetch contacts from database
-                // For demo, we'll use simulated contacts
+                // Fetch all users except current user
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('id, username')
-                    .neq('id', currentUser.id)
-                    .limit(5);
+                    .neq('id', currentUser.id);
                 
                 if (error) throw error;
                 
+                // Add online status randomly for demo
                 currentUser.contacts = data.map(contact => ({
                     ...contact,
                     online: Math.random() > 0.3 // Random online status
@@ -931,8 +941,11 @@
         
         // Add message to chat
         function addMessage(content, isSent = true, senderId) {
-            const sender = currentUser.contacts.find(c => c.id === senderId) || 
-                          { username: isSent ? 'You' : 'Unknown' };
+            let senderName = 'You';
+            if (!isSent) {
+                const contact = currentUser.contacts.find(c => c.id === senderId);
+                senderName = contact ? contact.username : 'Unknown';
+            }
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message flex mb-4 animate-fadeIn ${isSent ? 'sent justify-end' : 'received justify-start'}`;
@@ -943,7 +956,7 @@
             messageDiv.innerHTML = `
                 <div class="max-w-xs md:max-w-md rounded-lg p-4">
                     <div class="flex justify-between text-xs opacity-75 mb-1">
-                        <span>${isSent ? 'You' : sender.username}</span>
+                        <span>${senderName}</span>
                         <span>${timeString}</span>
                     </div>
                     <div class="mb-1">${content}</div>
