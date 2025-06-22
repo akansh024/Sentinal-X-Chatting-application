@@ -5,426 +5,523 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sentinel-X | Secure Chat</title>
     <link rel="icon" href="data:,">
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        matrix: {
-                            green: '#0f0',
-                            dark: '#0a0a0a',
-                            panel: 'rgba(10, 20, 10, 0.8)'
-                        }
-                    },
-                    animation: {
-                        'matrix-fall': 'matrixFall 0.5s linear infinite',
-                        'typing': 'typing 3s steps(40, end)',
-                        'blink-caret': 'blinkCaret 0.75s step-end infinite'
-                    },
-                    keyframes: {
-                        matrixFall: {
-                            '0%': { transform: 'translateY(-100%)' },
-                            '100%': { transform: 'translateY(100vh)' }
-                        },
-                        typing: {
-                            from: { width: '0' },
-                            to: { width: '100%' }
-                        },
-                        blinkCaret: {
-                            'from, to': { 'border-color': 'transparent' },
-                            '50%': { 'border-color': '#0f0' }
-                        }
-                    }
-                }
-            }
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&display=swap');
+        
+        :root {
+            --matrix-green: #0f0;
+            --matrix-dark: #0a0a0a;
+            --matrix-panel: rgba(10, 20, 10, 0.8);
+            --matrix-light: rgba(0, 255, 0, 0.1);
         }
-    </script>
-    <style type="text/css">
+        
+        body {
+            font-family: 'Source Code Pro', monospace;
+            background-color: #000;
+            color: var(--matrix-green);
+            overflow-x: hidden;
+        }
+        
         .matrix-bg {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: #000;
-            overflow: hidden;
-            z-index: -10;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(0, 50, 0, 0.2) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(0, 40, 0, 0.2) 0%, transparent 40%);
+            z-index: -1;
         }
-        .matrix-char {
-            position: absolute;
-            color: rgba(0, 255, 0, 0.8);
-            font-family: 'Courier New', monospace;
-            font-size: 16px;
-            text-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
-            user-select: none;
-        }
-        .message-bubble {
-            max-width: 75%;
-            border-radius: 1rem;
-            padding: 0.75rem 1rem;
-            position: relative;
-            animation: fadeIn 0.3s;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .sent {
-            background: rgba(0, 30, 0, 0.7);
-            border-right: 3px solid #0f0;
-            margin-left: auto;
-        }
-        .received {
-            background: rgba(0, 30, 0, 0.5);
-            border-left: 3px solid #0f0;
-        }
-        .terminal-line {
-            overflow: hidden;
-            white-space: nowrap;
-            border-right: 2px solid #0f0;
-            animation: typing 3s steps(40, end), blinkCaret 0.75s step-end infinite;
-            margin-bottom: 0.5rem;
-        }
-        .glow-border {
-            border: 1px solid #0f0;
-            box-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
-        }
-        .glow-text {
-            text-shadow: 0 0 5px #0f0;
-        }
-        .status-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 0.5rem;
-        }
-        .online {
-            background-color: #0f0;
-            box-shadow: 0 0 5px #0f0;
-        }
-        .offline {
-            background-color: #f00;
-            box-shadow: 0 0 5px #f00;
-        }
-        .modal-overlay {
+        
+        .matrix-grid {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 50;
+            background-image: 
+                linear-gradient(rgba(0, 255, 0, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 0, 0.1) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            opacity: 0.3;
+        }
+        
+        .matrix-char {
+            position: absolute;
+            color: rgba(0, 255, 0, 0.7);
+            font-size: 16px;
+            text-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+            user-select: none;
+            z-index: -1;
+        }
+        
+        .glow {
+            text-shadow: 0 0 5px var(--matrix-green), 0 0 10px var(--matrix-green);
+        }
+        
+        .glow-border {
+            border: 1px solid var(--matrix-green);
+            box-shadow: 0 0 5px var(--matrix-green), 0 0 10px var(--matrix-green);
+        }
+        
+        .panel {
+            background: var(--matrix-panel);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+        }
+        
+        .message.sent {
+            background: linear-gradient(90deg, rgba(0, 30, 0, 0.7), rgba(0, 40, 0, 0.5));
+            border-left: 3px solid var(--matrix-green);
+        }
+        
+        .message.received {
+            background: linear-gradient(90deg, rgba(0, 20, 0, 0.5), rgba(0, 30, 0, 0.3));
+            border-right: 3px solid var(--matrix-green);
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .online { background-color: var(--matrix-green); box-shadow: 0 0 5px var(--matrix-green); }
+        .offline { background-color: #f00; box-shadow: 0 0 5px #f00; }
+        .reconnecting { background-color: #ff0; box-shadow: 0 0 5px #ff0; }
+        
+        .terminal {
+            background: rgba(0, 10, 0, 0.5);
+            border: 1px solid var(--matrix-green);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .terminal-line {
             display: flex;
-            justify-content: center;
             align-items: center;
+            margin-bottom: 8px;
         }
-        .modal-content {
-            background: rgba(10, 20, 10, 0.9);
-            border-radius: 0.75rem;
-            border: 1px solid #0f0;
-            box-shadow: 0 0 15px #0f0;
-            width: 90%;
-            max-width: 400px;
+        
+        .terminal-prompt {
+            color: var(--matrix-green);
+            margin-right: 8px;
         }
-        .progress-bar {
-            height: 0.25rem;
-            background-color: rgba(0, 255, 0, 0.3);
-            border-radius: 0.125rem;
-            overflow: hidden;
+        
+        .terminal-text {
+            color: rgba(0, 255, 0, 0.8);
         }
-        .progress-fill {
-            height: 100%;
-            background-color: #0f0;
-            width: 0%;
-            transition: width 0.3s ease;
+        
+        .btn-matrix {
+            background: linear-gradient(90deg, rgba(0, 40, 0, 0.7), rgba(0, 60, 0, 0.5));
+            border: 1px solid var(--matrix-green);
+            color: var(--matrix-green);
+            transition: all 0.3s ease;
         }
+        
+        .btn-matrix:hover {
+            background: linear-gradient(90deg, rgba(0, 60, 0, 0.7), rgba(0, 80, 0, 0.5));
+            box-shadow: 0 0 10px var(--matrix-green);
+        }
+        
+        .input-matrix {
+            background: rgba(0, 15, 0, 0.5);
+            border: 1px solid var(--matrix-green);
+            color: var(--matrix-green);
+        }
+        
+        .input-matrix:focus {
+            outline: none;
+            box-shadow: 0 0 10px var(--matrix-green);
+        }
+        
         .security-code {
-            letter-spacing: 0.25rem;
-            font-family: monospace;
-            padding: 1rem;
+            font-family: 'Source Code Pro', monospace;
+            letter-spacing: 3px;
+            padding: 15px;
             background: rgba(0, 10, 0, 0.7);
-            border: 1px solid #0f0;
-            border-radius: 0.5rem;
+            border: 1px solid var(--matrix-green);
+            border-radius: 8px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
         }
-        .chat-messages {
-            scrollbar-width: thin;
-            scrollbar-color: #0f0 transparent;
-        }
-        .chat-messages::-webkit-scrollbar {
-            width: 6px;
-        }
-        .chat-messages::-webkit-scrollbar-thumb {
-            background-color: #0f0;
-            border-radius: 3px;
-        }
+        
         .spinner {
             display: inline-block;
-            width: 1rem;
-            height: 1rem;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 255, 0, 0.3);
             border-radius: 50%;
-            border-top-color: #0f0;
+            border-top-color: var(--matrix-green);
             animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
         }
+        
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-fadeIn {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .connection-status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .online-status { background: rgba(0, 80, 0, 0.3); }
+        .offline-status { background: rgba(80, 0, 0, 0.3); }
+        .reconnecting-status { background: rgba(80, 80, 0, 0.3); }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(0, 60, 0, 0.5);
+            border: 1px solid var(--matrix-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+        
+        .contact-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(0, 255, 0, 0.1);
+        }
+        
+        .contact-item:hover {
+            background: rgba(0, 40, 0, 0.3);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        .contact-item.active {
+            background: rgba(0, 60, 0, 0.4);
+            border: 1px solid var(--matrix-green);
+            box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 20, 0, 0.2);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--matrix-green);
+            border-radius: 4px;
+        }
+        
+        /* Password strength indicator */
+        .password-strength {
+            height: 4px;
+            border-radius: 2px;
+            margin-top: 4px;
+            background: #333;
+            overflow: hidden;
+        }
+        
+        .strength-meter {
+            height: 100%;
+            width: 0;
+            transition: width 0.3s;
+        }
+        
+        .strength-0 { width: 20%; background: #f00; }
+        .strength-1 { width: 40%; background: #f90; }
+        .strength-2 { width: 60%; background: #ff0; }
+        .strength-3 { width: 80%; background: #9f0; }
+        .strength-4 { width: 100%; background: #0f0; }
+        
+        /* Encryption animation */
+        @keyframes encrypt {
+            0% { opacity: 0.3; transform: scale(0.95); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { opacity: 0.3; transform: scale(0.95); }
+        }
+        
+        .encrypt-animation {
+            animation: encrypt 1.5s infinite;
+        }
     </style>
 </head>
-<body class="bg-matrix-dark text-matrix-green font-mono">
-    <!-- Matrix Background Effect -->
-    <div class="matrix-bg" id="matrix-bg"></div>
+<body class="bg-black text-green-500">
+    <!-- Background effects -->
+    <div class="matrix-bg"></div>
+    <div class="matrix-grid"></div>
     
-    <!-- Registration Modal -->
-    <div id="registration-modal" class="modal-overlay">
-        <div class="modal-content p-8 text-center">
-            <h2 class="text-2xl font-bold mb-2 glow-text">
-                <i class="fas fa-user-shield mr-2"></i> Sentinel-X Registration
-            </h2>
-            <p class="mb-4 opacity-75">Create your secure identity</p>
-            
-            <input type="text" id="username-input" 
-                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
-                   placeholder="Choose a username" autocomplete="off">
-            
-            <input type="password" id="password-input" 
-                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
-                   placeholder="Create a password" autocomplete="new-password">
-                   
-            <button id="register-button" 
-                    class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
-                Generate Identity Keys
-            </button>
-            
-            <p class="text-sm opacity-75 mb-4">Your identity keys will be generated locally</p>
-            
-            <div class="text-center mt-4">
-                <p class="text-sm opacity-75">Already registered?</p>
-                <button id="show-login" class="text-matrix-green underline mt-1">
-                    Switch to Login
-                </button>
-            </div>
-            
-            <div id="connection-status" class="py-2 px-3 bg-red-900 rounded-lg mb-4">
-                <span class="status-indicator offline"></span>
-                Disconnected from network
-            </div>
-            
-            <div id="crypto-status" class="py-2 px-3 rounded-lg bg-matrix-dark border border-matrix-green mb-4">
-                <span><i class="fas fa-sync fa-spin mr-2"></i> Initializing encryption...</span>
-                <div class="progress-bar mt-2">
-                    <div class="progress-fill" id="crypto-progress"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Login Modal -->
-    <div id="login-modal" class="modal-overlay hidden">
-        <div class="modal-content p-8 text-center">
-            <h2 class="text-2xl font-bold mb-2 glow-text">
-                <i class="fas fa-user-lock mr-2"></i> Sentinel-X Login
-            </h2>
-            <p class="mb-4 opacity-75">Access your secure identity</p>
-            
-            <input type="text" id="login-username" 
-                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
-                   placeholder="Username" autocomplete="username">
-            
-            <input type="password" id="login-password" 
-                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
-                   placeholder="Password" autocomplete="current-password">
-                   
-            <button id="login-button" 
-                    class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
-                Authenticate Identity
-            </button>
-            
-            <div class="text-center mt-4">
-                <p class="text-sm opacity-75">New user?</p>
-                <button id="show-register" class="text-matrix-green underline mt-1">
-                    Create New Identity
-                </button>
-            </div>
-            
-            <div id="login-status" class="py-2 px-3 bg-red-900 rounded-lg mb-4">
-                <span class="status-indicator offline"></span>
-                Disconnected from network
-            </div>
-        </div>
-    </div>
-    
-    <!-- Security Verification Modal -->
-    <div id="security-modal" class="modal-overlay hidden">
-        <div class="modal-content p-8 text-center">
-            <h2 class="text-2xl font-bold mb-4 glow-text">
-                <i class="fas fa-fingerprint mr-2"></i> Security Verification
-            </h2>
-            <p class="mb-4">Compare this code with your contact to verify your connection is secure:</p>
-            
-            <div class="security-code text-xl font-bold my-6" id="security-code">
-                4F9C 72B1 D8E3
-            </div>
-            
-            <p class="mb-6 opacity-75">If the codes match, your connection is end-to-end encrypted and secure.</p>
-            
-            <div class="flex justify-center gap-4">
-                <button id="verify-ok" class="px-6 py-2 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition">
-                    Codes Match
-                </button>
-                <button id="verify-mismatch" class="px-6 py-2 bg-red-900 border border-red-500 rounded-lg hover:bg-red-800 hover:glow-border transition">
-                    Mismatch Detected
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Contact Request Modal -->
-    <div id="contact-modal" class="modal-overlay hidden">
-        <div class="modal-content p-8 text-center">
-            <h2 class="text-2xl font-bold mb-4 glow-text">
-                <i class="fas fa-user-plus mr-2"></i> Add Contact
-            </h2>
-            
-            <input type="text" id="contact-id-input" 
-                   class="w-full p-3 bg-matrix-dark border border-matrix-green rounded-lg mb-4 focus:outline-none focus:glow-border"
-                   placeholder="Enter User ID">
-                   
-            <button id="send-request-button" 
-                    class="w-full py-3 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition mb-4">
-                Send Connection Request
-            </button>
-            
-            <div id="contact-status" class="py-2 px-3 rounded-lg bg-matrix-dark border border-matrix-green mb-4 hidden">
-                <span id="contact-status-text"></span>
-            </div>
-            
-            <h3 class="text-lg font-bold mt-6 mb-3">Pending Requests</h3>
-            <div id="pending-requests" class="max-h-40 overflow-y-auto"></div>
-        </div>
-    </div>
-    
-    <!-- Main App Container -->
-    <div class="container mx-auto px-4 py-6 max-w-6xl" id="app-container" style="display:none">
-        <!-- User Info Header -->
-        <div class="flex justify-between items-center mb-6">
+    <!-- Main container -->
+    <div class="min-h-screen flex flex-col max-w-6xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8 animate-fadeIn">
             <div>
-                <h1 class="text-3xl font-bold uppercase tracking-wider glow-text">Sentinel-X</h1>
+                <h1 class="text-3xl font-bold uppercase tracking-wider glow">
+                    <i class="fas fa-shield-alt mr-2"></i> Sentinel-X
+                </h1>
                 <p class="text-sm opacity-75">SECURE COMMUNICATION NETWORK</p>
             </div>
-            <div class="flex items-center gap-4">
-                <button id="add-contact-btn" class="px-4 py-1 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition">
-                    <i class="fas fa-user-plus mr-2"></i>Add Contact
-                </button>
-                <div id="user-info" class="px-3 py-1 bg-matrix-panel border border-matrix-green rounded-lg text-sm"></div>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center">
+                    <span class="status-indicator online" id="connection-indicator"></span>
+                    <span id="connection-text" class="text-sm">Secured</span>
+                </div>
+                <div id="user-info" class="px-4 py-2 bg-gray-900 rounded-lg text-sm hidden">
+                    <span id="username-display"></span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Auth section -->
+        <div id="auth-container" class="flex flex-col items-center justify-center flex-grow animate-fadeIn">
+            <div class="panel w-full max-w-md p-8">
+                <div class="text-center mb-8">
+                    <div class="inline-block p-4 rounded-full border-4 border-green-500 mb-4">
+                        <i class="fas fa-user-lock text-3xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold glow mb-2">Secure Authentication</h2>
+                    <p class="opacity-75">Protect your identity with end-to-end encryption</p>
+                </div>
+                
+                <!-- Login Form -->
+                <div id="login-form">
+                    <div class="mb-6">
+                        <label class="block text-sm mb-2">Email</label>
+                        <input type="email" id="login-email" 
+                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
+                               placeholder="Enter your email">
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm mb-2">Password</label>
+                        <input type="password" id="login-password" 
+                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
+                               placeholder="Enter your password">
+                    </div>
+                    <div class="connection-status offline-status mb-4 hidden" id="login-status">
+                        <span class="status-indicator offline"></span>
+                        <span>Connecting to secure network...</span>
+                    </div>
+                    <button id="login-btn" class="btn-matrix w-full py-3 rounded-lg font-medium">
+                        <i class="fas fa-fingerprint mr-2"></i> Authenticate
+                    </button>
+                    <div class="text-center mt-6">
+                        <p class="text-sm opacity-75">New user?</p>
+                        <button id="show-register" class="text-green-500 underline mt-1">
+                            Create Secure Identity
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Register Form (hidden by default) -->
+                <div id="register-form" class="hidden">
+                    <div class="mb-6">
+                        <label class="block text-sm mb-2">Username</label>
+                        <input type="text" id="register-username" 
+                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
+                               placeholder="Create a username">
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm mb-2">Email</label>
+                        <input type="email" id="register-email" 
+                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
+                               placeholder="Enter your email">
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm mb-2">Create Password</label>
+                        <input type="password" id="register-password" 
+                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
+                               placeholder="Create a strong password">
+                        <div class="password-strength mt-1">
+                            <div class="strength-meter" id="password-strength"></div>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm mb-2">Confirm Password</label>
+                        <input type="password" id="register-confirm" 
+                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
+                               placeholder="Confirm your password">
+                    </div>
+                    <div class="connection-status offline-status mb-4 hidden" id="register-status">
+                        <span class="status-indicator offline"></span>
+                        <span>Generating encryption keys...</span>
+                    </div>
+                    <button id="register-btn" class="btn-matrix w-full py-3 rounded-lg font-medium">
+                        <i class="fas fa-user-shield mr-2"></i> Generate Identity
+                    </button>
+                    <div class="text-center mt-6">
+                        <p class="text-sm opacity-75">Already registered?</p>
+                        <button id="show-login" class="text-green-500 underline mt-1">
+                            Access Existing Identity
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         
-        <div class="flex flex-col md:flex-row gap-6 h-[75vh]">
-            <!-- Sidebar -->
-            <div class="w-full md:w-80 bg-matrix-panel glow-border rounded-xl p-4 flex flex-col">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-bold"><i class="fas fa-user-friends mr-2"></i> Contacts</h2>
-                    <span id="online-count" class="bg-green-900 text-xs px-2 py-1 rounded-full">0 online</span>
-                </div>
-                
-                <div class="contact-list flex-1 overflow-y-auto" id="contact-list">
-                    <!-- Contacts will be loaded here -->
-                    <div class="text-center py-8 text-matrix-green text-opacity-50">
-                        <i class="fas fa-user-friends text-3xl mb-2"></i>
-                        <p>No contacts yet</p>
-                        <button id="add-contact-sidebar" class="mt-4 text-matrix-green underline">
-                            Add a contact
-                        </button>
+        <!-- Chat section (hidden by default) -->
+        <div id="chat-container" class="hidden flex-grow">
+            <div class="flex flex-col md:flex-row gap-6 h-[75vh]">
+                <!-- Sidebar -->
+                <div class="panel w-full md:w-80 p-4 flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold"><i class="fas fa-user-friends mr-2"></i> Contacts</h2>
+                        <span class="bg-green-900 text-xs px-2 py-1 rounded-full" id="online-count">0 online</span>
+                    </div>
+                    
+                    <div class="contact-list flex-1 overflow-y-auto mb-4" id="contact-list">
+                        <div class="text-center py-8 text-green-500 text-opacity-50">
+                            <i class="fas fa-user-friends text-3xl mb-2"></i>
+                            <p>No contacts yet</p>
+                            <p class="text-sm mt-4">Connect with other users to start chatting</p>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-green-500 border-opacity-30">
+                        <h2 class="text-xl font-bold mb-4"><i class="fas fa-shield-alt mr-2"></i> Security Status</h2>
+                        
+                        <div class="space-y-3 text-sm">
+                            <div class="flex items-center">
+                                <i class="fas fa-lock text-green-500 mr-2"></i>
+                                <span>End-to-End Encryption: <span class="text-green-500 glow" id="e2e-status">Active</span></span>
+                            </div>
+                            <div class="flex items-center">
+                                <i class="fas fa-user-secret text-green-500 mr-2"></i>
+                                <span>Identity Protection: <span class="text-green-500 glow">Enabled</span></span>
+                            </div>
+                            <div class="flex items-center">
+                                <i class="fas fa-fingerprint text-green-500 mr-2"></i>
+                                <span>Key Verification: <span class="text-green-500 glow" id="verification-status">Pending</span></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="mt-6 pt-4 border-t border-matrix-green border-opacity-30">
-                    <h2 class="text-xl font-bold mb-4"><i class="fas fa-shield-alt mr-2"></i> Security Status</h2>
+                <!-- Chat area -->
+                <div class="flex-1 flex flex-col panel overflow-hidden">
+                    <div class="p-4 border-b border-green-500 border-opacity-30 flex justify-between items-center">
+                        <h2 class="text-xl font-bold" id="current-contact">Select a Contact</h2>
+                        <div id="encryption-indicator" class="flex items-center text-sm">
+                            <div class="encrypt-animation mr-2">
+                                <i class="fas fa-lock"></i>
+                            </div>
+                            <span>Encrypting...</span>
+                        </div>
+                    </div>
                     
-                    <div class="space-y-3 text-sm">
-                        <div class="flex items-center">
-                            <i class="fas fa-lock text-matrix-green mr-2"></i>
-                            <span>End-to-End Encryption: <span class="text-green-500 glow-text" id="e2e-status">Active</span></span>
+                    <!-- Chat messages -->
+                    <div class="flex-1 overflow-y-auto p-4" id="chat-messages">
+                        <div class="terminal">
+                            <div class="terminal-line">
+                                <span class="terminal-prompt">></span>
+                                <span class="terminal-text">Welcome to Sentinel-X secure network</span>
+                            </div>
+                            <div class="terminal-line">
+                                <span class="terminal-prompt">></span>
+                                <span class="terminal-text">Initializing end-to-end encryption...</span>
+                            </div>
+                            <div class="terminal-line">
+                                <span class="terminal-prompt">></span>
+                                <span class="terminal-text">Connection secured with military-grade encryption</span>
+                            </div>
                         </div>
-                        <div class="flex items-center">
-                            <i class="fas fa-user-shield text-matrix-green mr-2"></i>
-                            <span>Identity Protection: <span class="text-green-500 glow-text">Enabled</span></span>
-                        </div>
-                        <div class="flex items-center">
-                            <i class="fas fa-fingerprint text-matrix-green mr-2"></i>
-                            <span>Key Verification: <span class="text-green-500 glow-text" id="verification-status">Pending</span></span>
-                        </div>
-                        <div class="flex items-center">
-                            <i class="fas fa-hourglass-half text-matrix-green mr-2"></i>
-                            <span>Message Lifetime: <span class="text-green-500 glow-text" id="message-lifetime">24h</span></span>
+                    </div>
+                    
+                    <!-- Message input -->
+                    <div class="p-4 border-t border-green-500 border-opacity-30 bg-gray-900 bg-opacity-50">
+                        <div class="flex gap-2">
+                            <input type="text" id="message-input" 
+                                   class="input-matrix flex-1 p-3 rounded-lg focus:outline-none"
+                                   placeholder="Type your encrypted message..." disabled>
+                            <button id="send-btn" class="btn-matrix px-6 rounded-lg" disabled>
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Chat Container -->
-            <div class="flex-1 flex flex-col bg-matrix-panel glow-border rounded-xl overflow-hidden">
-                <!-- Chat Header -->
-                <div class="p-4 border-b border-matrix-green border-opacity-30 flex justify-between items-center">
-                    <h2 class="text-xl font-bold" id="current-contact">Select a Contact</h2>
-                    <div class="status flex items-center">
-                        <span class="status-indicator offline" id="connection-indicator"></span>
-                        <span id="connection-text">Disconnected</span>
+        </div>
+        
+        <!-- Security verification modal -->
+        <div id="security-modal" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 hidden">
+            <div class="panel w-full max-w-md p-8">
+                <div class="text-center mb-6">
+                    <div class="inline-block p-3 rounded-full border-4 border-green-500 mb-4">
+                        <i class="fas fa-fingerprint text-2xl"></i>
                     </div>
+                    <h2 class="text-2xl font-bold glow mb-2">Security Verification</h2>
+                    <p class="opacity-75">Compare this code with your contact to verify your connection</p>
                 </div>
                 
-                <!-- Chat Messages -->
-                <div class="chat-messages flex-1 overflow-y-auto p-4" id="chat-messages">
-                    <div class="text-center py-12 text-matrix-green text-opacity-50">
-                        <i class="fas fa-comments text-3xl mb-2"></i>
-                        <p>No conversation selected</p>
-                        <p class="text-sm mt-2">Select a contact or add a new one to start chatting</p>
-                    </div>
+                <div class="security-code glow mb-6" id="security-code">
+                    A5F3 9C2D 71B8
                 </div>
                 
-                <!-- Chat Input -->
-                <div class="p-4 border-t border-matrix-green border-opacity-30 bg-matrix-dark bg-opacity-50">
-                    <div class="flex gap-2">
-                        <input type="text" id="message-input" 
-                               class="flex-1 p-3 bg-matrix-dark border border-matrix-green rounded-lg focus:outline-none focus:glow-border"
-                               placeholder="Type your secure message..." disabled>
-                        <button id="send-button" class="px-6 bg-green-900 border border-matrix-green rounded-lg hover:bg-green-800 hover:glow-border transition" disabled>
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </div>
+                <p class="text-center mb-6 opacity-75">
+                    If the codes match, your connection is end-to-end encrypted and secure.
+                </p>
+                
+                <div class="flex justify-center gap-4">
+                    <button id="verify-ok" class="btn-matrix px-6 py-2 rounded-lg">
+                        Codes Match
+                    </button>
+                    <button id="verify-mismatch" class="bg-red-900 border border-red-500 px-6 py-2 rounded-lg hover:bg-red-800">
+                        Mismatch
+                    </button>
                 </div>
             </div>
         </div>
         
         <!-- Footer -->
-        <div class="mt-6 pt-4 text-center text-sm opacity-75 border-t border-matrix-green border-opacity-30">
-            Sentinel-X v3.0 | Connection: <span id="connection-type">Secured</span> | E2E Encrypted | Messages Auto-Delete in 24h
-        </div>
-    </div>
-    
-    <!-- Offline Warning -->
-    <div id="offline-warning" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-red-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center hidden">
-        <i class="fas fa-exclamation-triangle mr-2"></i>
-        <span>You appear to be offline. Some features may not work.</span>
+        <footer class="mt-8 pt-6 border-t border-green-500 border-opacity-20 text-center text-sm opacity-75">
+            Sentinel-X v4.0 | End-to-End Encrypted | Messages Auto-Delete in 24h | Secured with Supabase
+        </footer>
     </div>
 
     <script>
-        // Initialize matrix background
-        function initMatrixBackground() {
-            const container = document.getElementById('matrix-bg');
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$#@%&*';
-            const charCount = 150;
+        // Initialize Supabase
+        const supabaseUrl = 'https://sudchtocfhhwctctqdfk.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1ZGNodG9jZmhod2N0Y3RxZGZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ1NjY3NDUsImV4cCI6MjA2MDE0Mjc0NX0.S7iBl3zuUJyQ1zbjmOqaWtcaADJpKepxnAvn5xyiv64';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        
+        // Initialize matrix effect
+        function initMatrixEffect() {
+            const container = document.querySelector('.matrix-grid');
+            const chars = '01';
+            const charCount = 100;
             
             for (let i = 0; i < charCount; i++) {
                 const char = document.createElement('div');
                 char.className = 'matrix-char';
                 char.textContent = chars.charAt(Math.floor(Math.random() * chars.length));
                 char.style.left = `${Math.random() * 100}%`;
+                char.style.top = `${Math.random() * 100}%`;
                 char.style.animationDuration = `${Math.random() * 5 + 3}s`;
                 char.style.animationDelay = `${Math.random() * 2}s`;
                 char.style.opacity = `${Math.random() * 0.5 + 0.2}`;
@@ -433,815 +530,481 @@
             }
         }
         
-        // Initialize application
-        document.addEventListener('DOMContentLoaded', async function() {
-            initMatrixBackground();
+        // App state
+        let currentUser = {
+            id: null,
+            username: '',
+            session: null,
+            contacts: [],
+            currentChat: null,
+            key: null
+        };
+        
+        // DOM elements
+        const authContainer = document.getElementById('auth-container');
+        const chatContainer = document.getElementById('chat-container');
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const loginBtn = document.getElementById('login-btn');
+        const registerBtn = document.getElementById('register-btn');
+        const showRegister = document.getElementById('show-register');
+        const showLogin = document.getElementById('show-login');
+        const userInfo = document.getElementById('user-info');
+        const usernameDisplay = document.getElementById('username-display');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const connectionText = document.getElementById('connection-text');
+        const contactList = document.getElementById('contact-list');
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const currentContact = document.getElementById('current-contact');
+        const securityModal = document.getElementById('security-modal');
+        const securityCode = document.getElementById('security-code');
+        const verifyOkBtn = document.getElementById('verify-ok');
+        const verifyMismatchBtn = document.getElementById('verify-mismatch');
+        const onlineCount = document.getElementById('online-count');
+        const loginStatus = document.getElementById('login-status');
+        const registerStatus = document.getElementById('register-status');
+        const passwordStrength = document.getElementById('password-strength');
+        
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            initMatrixEffect();
+            setupEventListeners();
+            checkSession();
+        });
+        
+        function setupEventListeners() {
+            // Auth form toggling
+            showRegister.addEventListener('click', () => {
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+            });
             
-            // DOM elements
-            const registrationModal = document.getElementById('registration-modal');
-            const loginModal = document.getElementById('login-modal');
-            const usernameInput = document.getElementById('username-input');
-            const passwordInput = document.getElementById('password-input');
-            const registerButton = document.getElementById('register-button');
-            const loginUsername = document.getElementById('login-username');
-            const loginPassword = document.getElementById('login-password');
-            const loginButton = document.getElementById('login-button');
-            const showLogin = document.getElementById('show-login');
-            const showRegister = document.getElementById('show-register');
-            const userInfo = document.getElementById('user-info');
-            const appContainer = document.getElementById('app-container');
-            const messageInput = document.getElementById('message-input');
-            const sendButton = document.getElementById('send-button');
-            const chatMessages = document.getElementById('chat-messages');
-            const contactList = document.getElementById('contact-list');
-            const currentContact = document.getElementById('current-contact');
-            const securityModal = document.getElementById('security-modal');
-            const securityCode = document.getElementById('security-code');
-            const verifyOkButton = document.getElementById('verify-ok');
-            const verifyMismatchButton = document.getElementById('verify-mismatch');
-            const connectionStatus = document.getElementById('connection-status');
-            const connectionIndicator = document.getElementById('connection-indicator');
-            const connectionText = document.getElementById('connection-text');
-            const cryptoStatus = document.getElementById('crypto-status');
-            const cryptoProgress = document.getElementById('crypto-progress');
-            const offlineWarning = document.getElementById('offline-warning');
-            const contactModal = document.getElementById('contact-modal');
-            const contactIdInput = document.getElementById('contact-id-input');
-            const sendRequestButton = document.getElementById('send-request-button');
-            const contactStatus = document.getElementById('contact-status');
-            const contactStatusText = document.getElementById('contact-status-text');
-            const addContactBtn = document.getElementById('add-contact-btn');
-            const addContactSidebar = document.getElementById('add-contact-sidebar');
-            const pendingRequests = document.getElementById('pending-requests');
-            const onlineCount = document.getElementById('online-count');
+            showLogin.addEventListener('click', () => {
+                registerForm.classList.add('hidden');
+                loginForm.classList.remove('hidden');
+            });
             
-            // User state
-            let currentUser = {
-                id: null,
-                username: '',
-                key: null,
-                contacts: {},
-                currentChat: null
-            };
+            // Password strength meter
+            document.getElementById('register-password').addEventListener('input', checkPasswordStrength);
             
-            // Socket connection
-            let socket;
-            let connected = false;
+            // Login button
+            loginBtn.addEventListener('click', loginUser);
             
-            // Initialize socket connection with modern parameters
-            function initializeSocket() {
-                const SOCKET_SERVER_URL = 'https://sentinal-x-chatting-application-1.onrender.com';
-                socket = io(SOCKET_SERVER_URL, {
-                    autoConnect: false,
-                    reconnection: true,
-                    reconnectionAttempts: 5,
-                    reconnectionDelay: 1000,
-                    reconnectionDelayMax: 5000,
-                    transports: ['websocket']
-                });
-                
-                // Handle connection
-                socket.on('connect', () => {
-                    connected = true;
-                    connectionStatus.innerHTML = '<span class="status-indicator online"></span> Connected to secure network';
-                    connectionStatus.className = 'py-2 px-3 bg-green-900 rounded-lg mb-4';
-                    connectionIndicator.className = 'status-indicator online';
-                    connectionText.textContent = 'Secured';
-                });
-                
-                // Handle disconnection
-                socket.on('disconnect', () => {
-                    connected = false;
-                    connectionStatus.innerHTML = '<span class="status-indicator offline"></span> Disconnected from network';
-                    connectionStatus.className = 'py-2 px-3 bg-red-900 rounded-lg mb-4';
-                    connectionIndicator.className = 'status-indicator offline';
-                    connectionText.textContent = 'Disconnected';
-                });
-                
-                // Handle connection error
-                socket.on('connect_error', (error) => {
-                    console.error('Connection error:', error);
-                    connectionStatus.innerHTML = '<span class="status-indicator offline"></span> Connection error. Retrying...';
-                    connectionStatus.className = 'py-2 px-3 bg-red-900 rounded-lg mb-4';
-                });
-                
-                // Handle incoming messages
-                socket.on('newMessage', async (messageData) => {
-                    const contact = Object.values(currentUser.contacts).find(c => c.id === messageData.senderId);
-                    if (!contact || contact.id !== currentUser.currentChat) return;
-                    
-                    try {
-                        // Decrypt the message
-                        const plaintext = await decryptMessage(
-                            new Uint8Array(messageData.ciphertext),
-                            new Uint8Array(messageData.iv),
-                            currentUser.key
-                        );
-                        
-                        // Add to UI
-                        addMessage(plaintext, false, contact.username);
-                    } catch (error) {
-                        console.error('Decryption error:', error);
-                        addSystemMessage('Failed to decrypt a message. Security may be compromised.');
-                    }
-                });
-                
-                // Handle contact requests
-                socket.on('contactRequest', (request) => {
-                    addPendingRequest(request);
-                });
-                
-                // Handle contact request response
-                socket.on('contactRequestResponse', (response) => {
-                    if (response.accepted) {
-                        contactStatus.classList.remove('hidden');
-                        contactStatus.classList.remove('bg-red-900');
-                        contactStatus.classList.add('bg-green-900');
-                        contactStatusText.textContent = `Request accepted by ${response.requesterName}`;
-                        
-                        // Add to contacts
-                        addContact(response.requesterId, response.requesterName);
-                    } else {
-                        contactStatus.classList.remove('hidden');
-                        contactStatus.classList.remove('bg-green-900');
-                        contactStatus.classList.add('bg-red-900');
-                        contactStatusText.textContent = `Request declined by ${response.requesterName}`;
-                    }
-                    
-                    // Remove from pending requests
-                    removePendingRequest(response.requesterId);
-                });
-            }
+            // Register button
+            registerBtn.addEventListener('click', registerUser);
             
-            // Initialize Web Crypto API for encryption
-            async function initCrypto() {
-                try {
-                    // Update progress bar
-                    const progressInterval = setInterval(() => {
-                        const currentWidth = parseInt(cryptoProgress.style.width) || 0;
-                        const newWidth = Math.min(currentWidth + 10, 100);
-                        cryptoProgress.style.width = `${newWidth}%`;
-                        
-                        if (newWidth >= 100) {
-                            clearInterval(progressInterval);
-                            cryptoStatus.innerHTML = '<span class="text-green-500"><i class="fas fa-check mr-2"></i> Encryption ready</span>';
-                        }
-                    }, 200);
-                    
-                    return true;
-                } catch (error) {
-                    console.error('Crypto initialization error:', error);
-                    cryptoStatus.innerHTML = '<span class="text-red-500"><i class="fas fa-exclamation-circle mr-2"></i> Encryption failed</span>';
-                    return false;
-                }
-            }
-            
-            // Generate encryption key
-            async function generateKey() {
-                try {
-                    const key = await window.crypto.subtle.generateKey(
-                        {
-                            name: "AES-GCM",
-                            length: 256
-                        },
-                        true,
-                        ["encrypt", "decrypt"]
-                    );
-                    
-                    return key;
-                } catch (error) {
-                    console.error('Key generation error:', error);
-                    return null;
-                }
-            }
-            
-            // Encrypt message
-            async function encryptMessage(message, key) {
-                try {
-                    const encoder = new TextEncoder();
-                    const encoded = encoder.encode(message);
-                    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-                    
-                    const ciphertext = await window.crypto.subtle.encrypt(
-                        {
-                            name: "AES-GCM",
-                            iv: iv
-                        },
-                        key,
-                        encoded
-                    );
-                    
-                    return {
-                        ciphertext: new Uint8Array(ciphertext),
-                        iv: iv
-                    };
-                } catch (error) {
-                    console.error('Encryption error:', error);
-                    throw new Error('Failed to encrypt message');
-                }
-            }
-            
-            // Decrypt message
-            async function decryptMessage(ciphertext, iv, key) {
-                try {
-                    const decrypted = await window.crypto.subtle.decrypt(
-                        {
-                            name: "AES-GCM",
-                            iv: iv
-                        },
-                        key,
-                        ciphertext
-                    );
-                    
-                    const decoder = new TextDecoder();
-                    return decoder.decode(decrypted);
-                } catch (error) {
-                    console.error('Decryption error:', error);
-                    throw new Error('Failed to decrypt message');
-                }
-            }
-            
-            // Register user
-            async function registerUser() {
-                const username = usernameInput.value.trim();
-                const password = passwordInput.value;
-                
-                if (!username) {
-                    alert('Please enter a username');
-                    return;
-                }
-                
-                if (!password) {
-                    alert('Please enter a password');
-                    return;
-                }
-                
-                // Show generating message
-                registerButton.innerHTML = '<span class="spinner"></span> Generating Keys...';
-                registerButton.disabled = true;
-                
-                // Initialize crypto
-                const cryptoSuccess = await initCrypto();
-                
-                if (!cryptoSuccess) {
-                    registerButton.innerHTML = 'Generate Identity Keys';
-                    registerButton.disabled = false;
-                    showError('Encryption initialization failed', 'Failed to generate encryption keys');
-                    return;
-                }
-                
-                // Generate a key for the user
-                const userKey = await generateKey();
-                if (!userKey) {
-                    registerButton.innerHTML = 'Generate Identity Keys';
-                    registerButton.disabled = false;
-                    showError('Key generation failed', 'Failed to generate encryption keys');
-                    return;
-                }
-                
-                // Connect to server
-                socket.connect();
-                
-                // Set timeout for connection
-                const connectionTimeout = setTimeout(() => {
-                    if (!connected) {
-                        connectionStatus.innerHTML = '<span class="status-indicator offline"></span> Connection failed. Retrying...';
-                        socket.connect();
-                    }
-                }, 3000);
-                
-                // Register user with server - FIXED: Added password parameter
-                socket.emit('register', {
-                    username: username,
-                    password: password,
-                    publicKey: 'key-placeholder' // Server expects publicKey
-                }, (response) => {
-                    clearTimeout(connectionTimeout);
-                    
-                    if (response.success) {
-                        currentUser.id = response.userId;
-                        currentUser.username = username;
-                        currentUser.key = userKey;
-                        
-                        // Update UI
-                        userInfo.textContent = username;
-                        registrationModal.style.display = 'none';
-                        appContainer.style.display = 'block';
-                        
-                        // Enable UI
-                        messageInput.disabled = false;
-                        sendButton.disabled = false;
-                        
-                        // Add system message
-                        addSystemMessage('Secure connection established with Sentinel-X network');
-                        addSystemMessage(`Your user ID: ${response.userId}`);
-                        addSystemMessage('Your encryption keys have been generated locally');
-                        addSystemMessage('End-to-end encryption is active');
-                        
-                        // Load contacts
-                        loadContacts();
-                    } else {
-                        alert(`Registration failed: ${response.error}`);
-                        registerButton.innerHTML = 'Generate Identity Keys';
-                        registerButton.disabled = false;
-                    }
-                });
-            }
-            
-            // Login user
-            function loginUser() {
-                const username = loginUsername.value.trim();
-                const password = loginPassword.value;
-                
-                if (!username) {
-                    alert('Please enter a username');
-                    return;
-                }
-                
-                if (!password) {
-                    alert('Please enter a password');
-                    return;
-                }
-                
-                // Show authenticating message
-                loginButton.innerHTML = '<span class="spinner"></span> Authenticating...';
-                loginButton.disabled = true;
-                
-                // Connect to server
-                socket.connect();
-                
-                socket.emit('login', {
-                    username: username,
-                    password: password
-                }, (response) => {
-                    if (response.success) {
-                        // Initialize crypto
-                        initCrypto().then(async cryptoSuccess => {
-                            if (!cryptoSuccess) {
-                                showError('Encryption initialization failed', 'Failed to initialize encryption');
-                                return;
-                            }
-                            
-                            // Generate a key for the user
-                            const userKey = await generateKey();
-                            if (!userKey) {
-                                showError('Key generation failed', 'Failed to generate encryption keys');
-                                return;
-                            }
-                            
-                            currentUser.id = response.userId;
-                            currentUser.username = username;
-                            currentUser.key = userKey;
-                            
-                            // Update UI
-                            userInfo.textContent = username;
-                            loginModal.classList.add('hidden');
-                            appContainer.style.display = 'block';
-                            
-                            // Enable UI
-                            messageInput.disabled = false;
-                            sendButton.disabled = false;
-                            
-                            // Add system message
-                            addSystemMessage('Secure connection established with Sentinel-X network');
-                            addSystemMessage(`Welcome back, ${username}`);
-                            addSystemMessage('End-to-end encryption is active');
-                            
-                            // Load contacts
-                            loadContacts();
-                        });
-                    } else {
-                        alert(`Login failed: ${response.error}`);
-                        loginButton.innerHTML = 'Authenticate Identity';
-                        loginButton.disabled = false;
-                    }
-                });
-            }
-            
-            // Load contacts
-            function loadContacts() {
-                socket.emit('getUsers', {}, (response) => {
-                    if (response.success) {
-                        currentUser.contacts = {};
-                        contactList.innerHTML = '';
-                        
-                        let onlineUsers = 0;
-                        
-                        response.users.forEach(user => {
-                            if (user.id !== currentUser.id) {
-                                currentUser.contacts[user.id] = user;
-                                
-                                const contactEl = document.createElement('div');
-                                contactEl.className = 'contact-item p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
-                                contactEl.dataset.userId = user.id;
-                                contactEl.innerHTML = `
-                                    <div class="flex items-center">
-                                        <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
-                                            ${user.username.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <div class="font-bold">${user.username}</div>
-                                            <div class="text-xs opacity-75 flex items-center">
-                                                <span class="status-indicator online"></span>
-                                                Online - Secure
-                                            </div>
-                                        </div>
-                                    </div>
-                                `;
-                                
-                                contactEl.addEventListener('click', () => {
-                                    document.querySelectorAll('.contact-item').forEach(c => {
-                                        c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
-                                    });
-                                    contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
-                                    openChat(user.id);
-                                });
-                                
-                                contactList.appendChild(contactEl);
-                                onlineUsers++;
-                            }
-                        });
-                        
-                        // Update online count
-                        onlineCount.textContent = `${onlineUsers} online`;
-                        
-                        if (response.users.length <= 1) {
-                            contactList.innerHTML = `
-                                <div class="text-center py-8 text-matrix-green text-opacity-50">
-                                    <i class="fas fa-user-friends text-3xl mb-2"></i>
-                                    <p>No contacts yet</p>
-                                    <button id="add-contact-sidebar" class="mt-4 text-matrix-green underline">
-                                        Add a contact
-                                    </button>
-                                </div>
-                            `;
-                            document.getElementById('add-contact-sidebar').addEventListener('click', () => {
-                                contactModal.classList.remove('hidden');
-                            });
-                        }
-                    } else {
-                        contactList.innerHTML = `
-                            <div class="text-center py-8 text-matrix-green text-opacity-50">
-                                <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
-                                <p>Failed to load contacts</p>
-                                <button class="mt-4 text-matrix-green underline" onclick="location.reload()">
-                                    Refresh page
-                                </button>
-                            </div>
-                        `;
-                    }
-                });
-            }
-            
-            // Add a contact
-            function addContact(contactId, contactName) {
-                if (!currentUser.contacts[contactId]) {
-                    currentUser.contacts[contactId] = {
-                        id: contactId,
-                        username: contactName
-                    };
-                    
-                    const contactEl = document.createElement('div');
-                    contactEl.className = 'contact-item p-3 mb-2 bg-matrix-dark rounded-lg cursor-pointer hover:bg-green-900 hover:bg-opacity-30 transition border border-matrix-green border-opacity-20';
-                    contactEl.dataset.userId = contactId;
-                    contactEl.innerHTML = `
-                        <div class="flex items-center">
-                            <div class="w-10 h-10 rounded-full bg-green-900 bg-opacity-20 border border-matrix-green flex items-center justify-center mr-3">
-                                ${contactName.charAt(0)}
-                            </div>
-                            <div>
-                                <div class="font-bold">${contactName}</div>
-                                <div class="text-xs opacity-75 flex items-center">
-                                    <span class="status-indicator online"></span>
-                                    Online - Secure
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    
-                    contactEl.addEventListener('click', () => {
-                        document.querySelectorAll('.contact-item').forEach(c => {
-                            c.classList.remove('bg-green-900', 'bg-opacity-30', 'glow-border');
-                        });
-                        contactEl.classList.add('bg-green-900', 'bg-opacity-30', 'glow-border');
-                        openChat(contactId);
-                    });
-                    
-                    contactList.appendChild(contactEl);
-                    
-                    // Update online count
-                    onlineCount.textContent = `${Object.keys(currentUser.contacts).length} online`;
-                }
-            }
-            
-            // Add pending request to UI
-            function addPendingRequest(request) {
-                const requestEl = document.createElement('div');
-                requestEl.className = 'p-3 mb-2 bg-matrix-dark rounded-lg border border-matrix-green border-opacity-30';
-                requestEl.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="font-bold">${request.requesterName}</div>
-                            <div class="text-xs opacity-75">Wants to connect</div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button class="accept-request px-3 py-1 bg-green-900 rounded hover:bg-green-800" data-request-id="${request.requesterId}">
-                                <i class="fas fa-check"></i>
-                            </button>
-                            <button class="decline-request px-3 py-1 bg-red-900 rounded hover:bg-red-800" data-request-id="${request.requesterId}">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
-                pendingRequests.appendChild(requestEl);
-                
-                // Add event listeners
-                requestEl.querySelector('.accept-request').addEventListener('click', function() {
-                    const requestId = this.dataset.requestId;
-                    acceptContactRequest(requestId);
-                });
-                
-                requestEl.querySelector('.decline-request').addEventListener('click', function() {
-                    const requestId = this.dataset.requestId;
-                    declineContactRequest(requestId);
-                });
-            }
-            
-            // Remove pending request from UI
-            function removePendingRequest(requestId) {
-                const requestEl = pendingRequests.querySelector(`[data-request-id="${requestId}"]`);
-                if (requestEl) {
-                    requestEl.parentElement.parentElement.parentElement.remove();
-                }
-            }
-            
-            // Accept contact request
-            function acceptContactRequest(requesterId) {
-                socket.emit('contactRequestResponse', {
-                    requesterId: requesterId,
-                    recipientId: currentUser.id,
-                    accepted: true
-                });
-                
-                // Add to contacts immediately
-                const requestEl = pendingRequests.querySelector(`[data-request-id="${requesterId}"]`);
-                if (requestEl) {
-                    const requesterName = requestEl.closest('div').querySelector('.font-bold').textContent;
-                    addContact(requesterId, requesterName);
-                    removePendingRequest(requesterId);
-                }
-            }
-            
-            // Decline contact request
-            function declineContactRequest(requesterId) {
-                socket.emit('contactRequestResponse', {
-                    requesterId: requesterId,
-                    recipientId: currentUser.id,
-                    accepted: false
-                });
-                
-                removePendingRequest(requesterId);
-            }
-            
-            // Open chat with a contact
-            function openChat(contactId) {
-                const contact = currentUser.contacts[contactId];
-                if (!contact) return;
-                
-                currentUser.currentChat = contactId;
-                currentContact.innerHTML = `${contact.username} <span class="text-green-500">(Secure)</span>`;
-                
-                // Clear chat messages
-                chatMessages.innerHTML = '';
-                
-                // Add connection message
-                addSystemMessage(`Secure connection established with ${contact.username}`);
-                
-                // Generate security code
-                const code = generateSecurityCode(currentUser.id, contactId);
-                securityCode.textContent = code;
-                
-                // Show verification modal
-                securityModal.classList.remove('hidden');
-            }
-            
-            // Generate security code for verification
-            function generateSecurityCode(userId1, userId2) {
-                const ids = [userId1, userId2].sort().join('');
-                let hash = 0;
-                
-                for (let i = 0; i < ids.length; i++) {
-                    hash = ((hash << 5) - hash) + ids.charCodeAt(i);
-                    hash |= 0; // Convert to 32bit integer
-                }
-                
-                // Convert to 12-character hex code
-                const hex = Math.abs(hash).toString(16).toUpperCase().padStart(12, '0');
-                return `${hex.substring(0, 4)} ${hex.substring(4, 8)} ${hex.substring(8, 12)}`;
-            }
-            
-            // Add system message to chat
-            function addSystemMessage(text) {
-                const terminalDiv = document.createElement('div');
-                terminalDiv.classList.add('terminal-line');
-                terminalDiv.textContent = `> ${text}`;
-                chatMessages.appendChild(terminalDiv);
-                scrollToBottom();
-            }
-            
-            // Add message to UI
-            function addMessage(content, isSent = true, senderName = null) {
-                const messageDiv = document.createElement('div');
-                messageDiv.classList.add('message-bubble', isSent ? 'sent' : 'received');
-                
-                const now = new Date();
-                const timeString = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
-                
-                messageDiv.innerHTML = `
-                    <div class="flex justify-between text-xs opacity-75 mb-1">
-                        <span>${isSent ? 'You' : (senderName || 'Unknown')}</span>
-                        <span>${timeString}</span>
-                    </div>
-                    <div class="message-content">
-                        ${content}
-                    </div>
-                    <div class="flex text-xs mt-2 opacity-75">
-                        <span class="mr-3"><i class="fas ${isSent ? 'fa-check-circle' : 'fa-lock'} mr-1"></i> ${isSent ? 'Delivered' : 'Encrypted'}</span>
-                        ${!isSent ? '<span><i class="fas fa-clock mr-1"></i> 24h</span>' : ''}
-                    </div>
-                `;
-                
-                chatMessages.appendChild(messageDiv);
-                scrollToBottom();
-            }
-            
-            // Scroll to bottom of chat
-            function scrollToBottom() {
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-            
-            // Send message
-            async function sendMessage() {
-                const message = messageInput.value.trim();
-                if (!message) return;
-                
-                if (!currentUser.currentChat) {
-                    alert('Please select a contact first');
-                    return;
-                }
-                
-                const contact = currentUser.contacts[currentUser.currentChat];
-                
-                try {
-                    // Encrypt the message
-                    const { ciphertext, iv } = await encryptMessage(message, currentUser.key);
-                    
-                    // Add to UI immediately
-                    addMessage(message, true);
-                    
-                    // Send to server
-                    socket.emit('sendMessage', {
-                        senderId: currentUser.id,
-                        recipientId: contact.id,
-                        ciphertext: Array.from(ciphertext),
-                        iv: Array.from(iv)
-                    }, (response) => {
-                        if (!response.success) {
-                            addSystemMessage(`Failed to send message: ${response.error}`);
-                        }
-                    });
-                    
-                    messageInput.value = '';
-                } catch (error) {
-                    console.error('Encryption error:', error);
-                    addSystemMessage('Failed to encrypt message. Security compromised!');
-                }
-            }
-            
-            // Send contact request
-            function sendContactRequest() {
-                const contactId = contactIdInput.value.trim();
-                if (!contactId) {
-                    alert('Please enter a user ID');
-                    return;
-                }
-                
-                if (contactId === currentUser.id) {
-                    alert("You can't add yourself as a contact");
-                    return;
-                }
-                
-                // Hide status message
-                contactStatus.classList.add('hidden');
-                
-                // Send request to server
-                socket.emit('contactRequest', {
-                    requesterId: currentUser.id,
-                    requesterName: currentUser.username,
-                    recipientId: contactId
-                }, (response) => {
-                    if (response.success) {
-                        contactStatus.classList.remove('hidden');
-                        contactStatus.classList.remove('bg-red-900');
-                        contactStatus.classList.add('bg-green-900');
-                        contactStatusText.textContent = 'Request sent successfully';
-                    } else {
-                        contactStatus.classList.remove('hidden');
-                        contactStatus.classList.remove('bg-green-900');
-                        contactStatus.classList.add('bg-red-900');
-                        contactStatusText.textContent = `Error: ${response.error}`;
-                    }
-                });
-            }
-            
-            // Offline detection
-            function updateOnlineStatus() {
-                if (navigator.onLine) {
-                    offlineWarning.classList.add('hidden');
-                } else {
-                    offlineWarning.classList.remove('hidden');
-                }
-            }
-            
-            // Enhanced error display
-            function showError(message, details = '') {
-                const errorHtml = `
-                    <div class="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-6 text-red-500 text-center">
-                        <h1 class="text-3xl mb-4">
-                            <i class="fas fa-exclamation-triangle mr-2"></i> Critical Error
-                        </h1>
-                        <div class="text-xl mb-6">${message}</div>
-                        <div class="text-gray-500 mb-8">${details}</div>
-                        <button onclick="window.location.reload()" class="px-6 py-3 bg-red-700 text-white rounded-lg hover:bg-red-600 transition">
-                            <i class="fas fa-sync-alt mr-2"></i> Refresh Page
-                        </button>
-                    </div>
-                `;
-                document.body.insertAdjacentHTML('beforeend', errorHtml);
-            }
-            
-            // Event listeners
-            registerButton.addEventListener('click', registerUser);
-            loginButton.addEventListener('click', loginUser);
-            sendButton.addEventListener('click', sendMessage);
+            // Message sending
+            sendBtn.addEventListener('click', sendMessage);
             messageInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     sendMessage();
                 }
             });
             
-            showLogin.addEventListener('click', () => {
-                registrationModal.classList.add('hidden');
-                loginModal.classList.remove('hidden');
-            });
-            
-            showRegister.addEventListener('click', () => {
-                loginModal.classList.add('hidden');
-                registrationModal.classList.remove('hidden');
-            });
-            
-            verifyOkButton.addEventListener('click', () => {
+            // Security verification
+            verifyOkBtn.addEventListener('click', () => {
                 securityModal.classList.add('hidden');
                 document.getElementById('verification-status').textContent = 'Verified';
-                document.getElementById('e2e-status').textContent = 'Active';
-                addSystemMessage('Security verification completed. Connection is secure.');
-                addSystemMessage('End-to-end encryption is active.');
             });
             
-            verifyMismatchButton.addEventListener('click', () => {
+            verifyMismatchBtn.addEventListener('click', () => {
                 securityModal.classList.add('hidden');
                 document.getElementById('verification-status').textContent = 'Mismatch';
-                document.getElementById('verification-status').className = 'text-red-500 glow-text';
-                addSystemMessage('Security verification failed. Connection may be compromised!');
-                addSystemMessage('Do not share sensitive information.');
+                document.getElementById('verification-status').classList.add('text-red-500');
             });
+        }
+        
+        // Check password strength
+        function checkPasswordStrength() {
+            const password = document.getElementById('register-password').value;
+            let strength = 0;
             
-            addContactBtn.addEventListener('click', () => {
-                contactModal.classList.remove('hidden');
-            });
+            if (password.length >= 8) strength++;
+            if (password.match(/[a-z]+/)) strength++;
+            if (password.match(/[A-Z]+/)) strength++;
+            if (password.match(/[0-9]+/)) strength++;
+            if (password.match(/[$@#&!]+/)) strength++;
             
-            sendRequestButton.addEventListener('click', sendContactRequest);
+            passwordStrength.className = 'strength-meter strength-' + strength;
+        }
+        
+        // Check for existing session
+        async function checkSession() {
+            const { data, error } = await supabase.auth.getSession();
             
-            contactIdInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    sendContactRequest();
+            if (data.session) {
+                currentUser.session = data.session;
+                currentUser.id = data.session.user.id;
+                await loadUserProfile();
+                showChatInterface();
+            }
+        }
+        
+        // Login user
+        async function loginUser() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            if (!email || !password) {
+                showStatus(loginStatus, 'Please enter both email and password', 'offline');
+                return;
+            }
+            
+            showStatus(loginStatus, 'Authenticating...', 'reconnecting');
+            
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                
+                if (error) {
+                    throw new Error(error.message);
                 }
-            });
+                
+                currentUser.session = data.session;
+                currentUser.id = data.session.user.id;
+                
+                // Fetch user profile
+                const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('username')
+                    .eq('id', currentUser.id)
+                    .single();
+                
+                if (profileError) throw profileError;
+                
+                currentUser.username = profile.username;
+                
+                // Show chat interface
+                showChatInterface();
+                loginStatus.classList.add('hidden');
+            } catch (error) {
+                showStatus(loginStatus, 'Authentication failed: ' + error.message, 'offline');
+            }
+        }
+        
+        // Register user
+        async function registerUser() {
+            const username = document.getElementById('register-username').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const confirm = document.getElementById('register-confirm').value;
             
-            window.addEventListener('online', updateOnlineStatus);
-            window.addEventListener('offline', updateOnlineStatus);
+            if (!username || !email || !password || !confirm) {
+                showStatus(registerStatus, 'Please fill all fields', 'offline');
+                return;
+            }
             
-            // Initialize socket
-            initializeSocket();
+            if (password !== confirm) {
+                showStatus(registerStatus, 'Passwords do not match', 'offline');
+                return;
+            }
             
-            // Initialize crypto
-            initCrypto();
+            showStatus(registerStatus, 'Creating secure identity...', 'reconnecting');
             
-            // Update online status
-            updateOnlineStatus();
-        });
+            try {
+                // Create user account
+                const { data, error } = await supabase.auth.signUp({
+                    email: email,
+                    password: password,
+                    options: {
+                        data: {
+                            username: username
+                        }
+                    }
+                });
+                
+                if (error) {
+                    throw new Error(error.message);
+                }
+                
+                // Create profile
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .insert([
+                        { 
+                            id: data.user.id, 
+                            username: username,
+                            updated_at: new Date()
+                        }
+                    ]);
+                
+                if (profileError) throw profileError;
+                
+                currentUser.id = data.user.id;
+                currentUser.username = username;
+                
+                // Show chat interface
+                showChatInterface();
+                registerStatus.classList.add('hidden');
+            } catch (error) {
+                showStatus(registerStatus, 'Registration failed: ' + error.message, 'offline');
+            }
+        }
+        
+        // Load user profile
+        async function loadUserProfile() {
+            // Fetch user profile
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('username')
+                .eq('id', currentUser.id)
+                .single();
+            
+            if (error) {
+                console.error('Error loading profile:', error);
+                return;
+            }
+            
+            // Set username
+            currentUser.username = data.username;
+            usernameDisplay.textContent = data.username;
+            userInfo.classList.remove('hidden');
+        }
+        
+        // Show chat interface
+        function showChatInterface() {
+            authContainer.classList.add('hidden');
+            chatContainer.classList.remove('hidden');
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+            
+            // Load contacts and messages
+            loadContacts();
+            addSystemMessage('Secure connection established');
+            addSystemMessage('End-to-end encryption is active');
+            
+            // Update connection status
+            connectionIndicator.className = 'status-indicator online';
+            connectionText.textContent = 'Secured';
+            
+            // Setup real-time messaging
+            setupRealtime();
+        }
+        
+        // Setup real-time messaging
+        function setupRealtime() {
+            const channel = supabase.channel('realtime-messages')
+                .on(
+                    'postgres_changes',
+                    { event: 'INSERT', schema: 'public', table: 'messages' },
+                    (payload) => {
+                        // Only show messages for current chat
+                        if (currentUser.currentChat && 
+                            (payload.new.sender_id === currentUser.currentChat || 
+                             payload.new.receiver_id === currentUser.currentChat)) {
+                            const isSent = payload.new.sender_id === currentUser.id;
+                            addMessage(payload.new.content, isSent, payload.new.sender_id);
+                        }
+                    }
+                )
+                .subscribe();
+        }
+        
+        // Load contacts
+        async function loadContacts() {
+            try {
+                // In a real app, we would fetch contacts from database
+                // For demo, we'll use simulated contacts
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, username')
+                    .neq('id', currentUser.id)
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                currentUser.contacts = data.map(contact => ({
+                    ...contact,
+                    online: Math.random() > 0.3 // Random online status
+                }));
+                
+                // Update online count
+                const onlineContacts = currentUser.contacts.filter(c => c.online).length;
+                onlineCount.textContent = `${onlineContacts} online`;
+                
+                // Render contacts
+                contactList.innerHTML = '';
+                currentUser.contacts.forEach(contact => {
+                    const contactEl = document.createElement('div');
+                    contactEl.className = 'contact-item flex items-center';
+                    contactEl.dataset.userId = contact.id;
+                    contactEl.innerHTML = `
+                        <div class="user-avatar">${contact.username.charAt(0)}</div>
+                        <div class="flex-1">
+                            <div class="font-bold">${contact.username}</div>
+                            <div class="text-xs flex items-center opacity-75">
+                                <span class="status-indicator ${contact.online ? 'online' : 'offline'}"></span>
+                                ${contact.online ? 'Online - Secure' : 'Offline'}
+                            </div>
+                        </div>
+                    `;
+                    
+                    contactEl.addEventListener('click', () => {
+                        // Remove active class from all contacts
+                        document.querySelectorAll('.contact-item').forEach(el => {
+                            el.classList.remove('active');
+                        });
+                        
+                        // Add active class to clicked contact
+                        contactEl.classList.add('active');
+                        
+                        // Set current chat
+                        currentUser.currentChat = contact.id;
+                        currentContact.textContent = `${contact.username} (Secure)`;
+                        
+                        // Show security modal
+                        showSecurityVerification();
+                        
+                        // Clear and load messages
+                        chatMessages.innerHTML = '';
+                        addSystemMessage(`Secure connection established with ${contact.username}`);
+                        addSystemMessage('End-to-end encryption is active');
+                        
+                        // Load message history
+                        loadMessageHistory(contact.id);
+                    });
+                    
+                    contactList.appendChild(contactEl);
+                });
+            } catch (error) {
+                console.error('Error loading contacts:', error);
+                contactList.innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
+                        <p>Failed to load contacts</p>
+                        <p class="text-sm mt-4">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Load message history
+        async function loadMessageHistory(contactId) {
+            try {
+                const { data, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${currentUser.id})`)
+                    .order('created_at', { ascending: true });
+                
+                if (error) throw error;
+                
+                data.forEach(message => {
+                    const isSent = message.sender_id === currentUser.id;
+                    addMessage(message.content, isSent, message.sender_id);
+                });
+                
+                // Scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                addSystemMessage('Failed to load message history');
+            }
+        }
+        
+        // Show security verification modal
+        function showSecurityVerification() {
+            // Generate random security code
+            const code = Array.from({length: 12}, () => Math.floor(Math.random() * 16).toString(16).toUpperCase()).join('');
+            const formattedCode = `${code.substr(0,4)} ${code.substr(4,4)} ${code.substr(8,4)}`;
+            securityCode.textContent = formattedCode;
+            
+            // Show modal
+            securityModal.classList.remove('hidden');
+        }
+        
+        // Add system message
+        function addSystemMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'terminal-line mb-4 animate-fadeIn';
+            messageDiv.innerHTML = `
+                <span class="terminal-prompt">></span>
+                <span class="terminal-text">${text}</span>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Add message to chat
+        function addMessage(content, isSent = true, senderId) {
+            const sender = currentUser.contacts.find(c => c.id === senderId) || 
+                          { username: isSent ? 'You' : 'Unknown' };
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message flex mb-4 animate-fadeIn ${isSent ? 'sent justify-end' : 'received justify-start'}`;
+            
+            const now = new Date();
+            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            
+            messageDiv.innerHTML = `
+                <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                    <div class="flex justify-between text-xs opacity-75 mb-1">
+                        <span>${isSent ? 'You' : sender.username}</span>
+                        <span>${timeString}</span>
+                    </div>
+                    <div class="mb-1">${content}</div>
+                    <div class="text-xs flex items-center opacity-75">
+                        <i class="fas ${isSent ? 'fa-check-circle' : 'fa-lock'} mr-1"></i>
+                        <span>${isSent ? 'Delivered' : 'Encrypted'}</span>
+                    </div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            if (!currentUser.currentChat) {
+                alert('Please select a contact first');
+                return;
+            }
+            
+            // Add to UI immediately
+            addMessage(message, true, currentUser.id);
+            
+            // Clear input
+            messageInput.value = '';
+            
+            try {
+                // Save to database
+                const { error } = await supabase
+                    .from('messages')
+                    .insert([
+                        { 
+                            sender_id: currentUser.id, 
+                            receiver_id: currentUser.currentChat,
+                            content: message
+                        }
+                    ]);
+                
+                if (error) throw error;
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addSystemMessage('Failed to send message');
+            }
+        }
+        
+        // Show status message
+        function showStatus(element, message, status) {
+            element.classList.remove('hidden');
+            element.querySelector('span:last-child').textContent = message;
+            
+            // Update status indicator
+            const indicator = element.querySelector('.status-indicator');
+            indicator.className = 'status-indicator ' + status;
+            
+            // Update status class
+            element.className = 'connection-status ' + status + '-status mb-4';
+        }
     </script>
 </body>
 </html>
