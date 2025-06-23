@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentinel-X | Live Chat</title>
+    <title>MatrixChat | Secure Messaging</title>
     <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -15,6 +15,7 @@
             --matrix-dark: #0a0a0a;
             --matrix-panel: rgba(10, 20, 10, 0.8);
             --matrix-light: rgba(0, 255, 0, 0.1);
+            --whatsapp-green: #128C7E;
         }
         
         body {
@@ -96,7 +97,7 @@
         
         .online { background-color: var(--matrix-green); box-shadow: 0 0 5px var(--matrix-green); }
         .offline { background-color: #f00; box-shadow: 0 0 5px #f00; }
-        .reconnecting { background-color: #ff0; box-shadow: 0 0 5px #ff0; }
+        .typing { background-color: #ff0; box-shadow: 0 0 5px #ff0; }
         
         .terminal {
             background: rgba(0, 10, 0, 0.5);
@@ -146,84 +147,29 @@
             box-shadow: 0 0 10px var(--matrix-green);
         }
         
-        .security-code {
-            font-family: 'Source Code Pro', monospace;
-            letter-spacing: 3px;
-            padding: 15px;
-            background: rgba(0, 10, 0, 0.7);
-            border: 1px solid var(--matrix-green);
-            border-radius: 8px;
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
+        .chat-list {
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
         }
         
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(0, 255, 0, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--matrix-green);
-            animation: spin 1s ease-in-out infinite;
-            margin-right: 10px;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .animate-fadeIn {
-            animation: fadeIn 0.5s ease-out;
-        }
-        
-        .connection-status {
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-        
-        .online-status { background: rgba(0, 80, 0, 0.3); }
-        .offline-status { background: rgba(80, 0, 0, 0.3); }
-        .reconnecting-status { background: rgba(80, 80, 0, 0.3); }
-        
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: rgba(0, 60, 0, 0.5);
-            border: 1px solid var(--matrix-green);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            margin-right: 12px;
-        }
-        
-        .contact-item {
-            padding: 12px;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            cursor: pointer;
+        .chat-item {
             transition: all 0.3s ease;
-            border: 1px solid rgba(0, 255, 0, 0.1);
+            border-left: 3px solid transparent;
         }
         
-        .contact-item:hover {
+        .chat-item:hover {
             background: rgba(0, 40, 0, 0.3);
-            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-left: 3px solid var(--matrix-green);
         }
         
-        .contact-item.active {
+        .chat-item.active {
             background: rgba(0, 60, 0, 0.4);
-            border: 1px solid var(--matrix-green);
-            box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+            border-left: 3px solid var(--matrix-green);
+        }
+        
+        .message-container {
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
         }
         
         /* Scrollbar styling */
@@ -238,49 +184,6 @@
         ::-webkit-scrollbar-thumb {
             background: var(--matrix-green);
             border-radius: 4px;
-        }
-        
-        /* Password strength indicator */
-        .password-strength {
-            height: 4px;
-            border-radius: 2px;
-            margin-top: 4px;
-            background: #333;
-            overflow: hidden;
-        }
-        
-        .strength-meter {
-            height: 100%;
-            width: 0;
-            transition: width 0.3s;
-        }
-        
-        .strength-0 { width: 20%; background: #f00; }
-        .strength-1 { width: 40%; background: #f90; }
-        .strength-2 { width: 60%; background: #ff0; }
-        .strength-3 { width: 80%; background: #9f0; }
-        .strength-4 { width: 100%; background: #0f0; }
-        
-        /* Encryption animation */
-        @keyframes encrypt {
-            0% { opacity: 0.3; transform: scale(0.95); }
-            50% { opacity: 1; transform: scale(1.05); }
-            100% { opacity: 0.3; transform: scale(0.95); }
-        }
-        
-        .encrypt-animation {
-            animation: encrypt 1.5s infinite;
-        }
-        
-        /* Loading spinner */
-        .loader {
-            border: 4px solid rgba(0, 255, 0, 0.1);
-            border-top: 4px solid var(--matrix-green);
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
         }
         
         /* Typing indicator */
@@ -323,16 +226,46 @@
             position: absolute;
             top: -5px;
             right: -5px;
-            background-color: #f00;
-            color: white;
+            background-color: var(--matrix-green);
+            color: #000;
             border-radius: 50%;
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
             display: flex;
             justify-content: center;
             align-items: center;
             font-size: 10px;
             font-weight: bold;
+        }
+        
+        /* Message status icons */
+        .message-status {
+            margin-left: 5px;
+            font-size: 10px;
+        }
+        
+        /* Animation for new messages */
+        @keyframes highlight {
+            0% { background-color: rgba(0, 80, 0, 0.5); }
+            100% { background-color: transparent; }
+        }
+        
+        .new-message {
+            animation: highlight 2s ease;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .chat-sidebar {
+                position: absolute;
+                width: 100%;
+                z-index: 10;
+            }
+            .chat-main {
+                position: absolute;
+                width: 100%;
+                z-index: 20;
+            }
         }
     </style>
 </head>
@@ -344,139 +277,280 @@
     <!-- Main container -->
     <div class="min-h-screen flex flex-col max-w-6xl mx-auto px-4 py-8">
         <!-- Header -->
-        <header class="flex justify-between items-center mb-8 animate-fadeIn">
+        <header class="flex justify-between items-center mb-8">
             <div>
                 <h1 class="text-3xl font-bold uppercase tracking-wider glow">
-                    <i class="fas fa-shield-alt mr-2"></i> Sentinel-X
+                    <i class="fas fa-comments mr-2"></i> MatrixChat
                 </h1>
-                <p class="text-sm opacity-75">LIVE REAL-TIME CHAT</p>
+                <p class="text-sm opacity-75">WHATSAPP-STYLE SECURE MESSAGING</p>
             </div>
             <div class="flex items-center space-x-4">
                 <div class="flex items-center">
                     <span class="status-indicator online" id="connection-indicator"></span>
-                    <span id="connection-text" class="text-sm">Connected</span>
+                    <span id="connection-text" class="text-sm">Online</span>
                 </div>
-                <div id="user-info" class="px-4 py-2 bg-gray-900 rounded-lg text-sm hidden">
-                    <span id="username-display">Guest</span>
+                <div id="user-info" class="px-4 py-2 bg-gray-900 rounded-lg text-sm">
+                    <span id="username-display">You</span>
                 </div>
             </div>
         </header>
         
-        <!-- Auth section -->
-        <div id="auth-container" class="flex flex-col items-center justify-center flex-grow animate-fadeIn">
-            <div class="panel w-full max-w-md p-8">
-                <div class="text-center mb-8">
-                    <div class="inline-block p-4 rounded-full border-4 border-green-500 mb-4">
-                        <i class="fas fa-comments text-3xl"></i>
-                    </div>
-                    <h2 class="text-2xl font-bold glow mb-2">Enter Live Chat</h2>
-                    <p class="opacity-75">Join the conversation with real people</p>
-                </div>
-                
-                <!-- Username Form -->
-                <div id="login-form">
-                    <div class="mb-6">
-                        <label class="block text-sm mb-2">Choose a Username</label>
-                        <input type="text" id="login-username" 
-                               class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Enter your username" autocomplete="off">
-                    </div>
-                    <div class="connection-status reconnecting-status mb-4 hidden" id="login-status">
-                        <span class="status-indicator reconnecting"></span>
-                        <span>Connecting to chat server...</span>
-                    </div>
-                    <button id="login-btn" class="btn-matrix w-full py-3 rounded-lg font-medium">
-                        <i class="fas fa-sign-in-alt mr-2"></i> Join Chat
+        <!-- Chat container -->
+        <div class="flex flex-col md:flex-row gap-6 h-[75vh]">
+            <!-- Sidebar - Chat list -->
+            <div class="panel w-full md:w-1/3 p-4 flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold"><i class="fas fa-comment-alt mr-2"></i> Chats</h2>
+                    <button class="btn-matrix px-3 py-1 rounded-lg">
+                        <i class="fas fa-plus"></i>
                     </button>
                 </div>
-            </div>
-        </div>
-        
-        <!-- Chat section (hidden by default) -->
-        <div id="chat-container" class="hidden flex-grow">
-            <div class="flex flex-col md:flex-row gap-6 h-[75vh]">
-                <!-- Sidebar -->
-                <div class="panel w-full md:w-80 p-4 flex flex-col">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold"><i class="fas fa-user-friends mr-2"></i> Online Users</h2>
-                        <span class="bg-green-900 text-xs px-2 py-1 rounded-full" id="online-count">1 online</span>
+                
+                <!-- Search -->
+                <div class="mb-4">
+                    <div class="relative">
+                        <input type="text" placeholder="Search chats..." class="input-matrix w-full pl-10 pr-4 py-2 rounded-lg">
+                        <i class="fas fa-search absolute left-3 top-3 opacity-75"></i>
                     </div>
-                    
-                    <div class="contact-list flex-1 overflow-y-auto mb-4" id="contact-list">
-                        <div class="text-center py-8 text-green-500 text-opacity-50">
-                            <div class="loader"></div>
-                            <p>Loading users...</p>
+                </div>
+                
+                <!-- Chat list -->
+                <div class="chat-list" id="chat-list">
+                    <div class="chat-item active flex items-center p-3 mb-2 rounded-lg cursor-pointer">
+                        <div class="relative mr-3">
+                            <div class="w-12 h-12 rounded-full bg-green-900 flex items-center justify-center">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <span class="status-indicator online absolute bottom-0 right-0"></span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-bold flex justify-between">
+                                <span>Tech Enthusiasts</span>
+                                <span class="text-xs opacity-75">10:42 AM</span>
+                            </div>
+                            <div class="text-xs flex items-center opacity-75">
+                                <span>You: </span>
+                                <span class="truncate ml-1">Just deployed the new server</span>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="pt-4 border-t border-green-500 border-opacity-30">
-                        <h2 class="text-xl font-bold mb-4"><i class="fas fa-shield-alt mr-2"></i> Chat Info</h2>
-                        
-                        <div class="space-y-3 text-sm">
-                            <div class="flex items-center">
-                                <i class="fas fa-users text-green-500 mr-2"></i>
-                                <span>Active Users: <span class="text-green-500 glow" id="active-users">1</span></span>
+                    <div class="chat-item flex items-center p-3 mb-2 rounded-lg cursor-pointer">
+                        <div class="relative mr-3">
+                            <div class="w-12 h-12 rounded-full bg-green-900 flex items-center justify-center">
+                                <i class="fas fa-user-friends"></i>
                             </div>
-                            <div class="flex items-center">
-                                <i class="fas fa-comment text-green-500 mr-2"></i>
-                                <span>Messages Sent: <span class="text-green-500 glow" id="message-count">0</span></span>
+                            <span class="status-indicator online absolute bottom-0 right-0"></span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-bold flex justify-between">
+                                <span>Developers Group</span>
+                                <span class="text-xs opacity-75">9:15 AM</span>
                             </div>
-                            <div class="flex items-center">
-                                <i class="fas fa-globe text-green-500 mr-2"></i>
-                                <span>Global Chat Room</span>
+                            <div class="text-xs flex items-center opacity-75">
+                                <span>Sarah: </span>
+                                <span class="truncate ml-1">Fixed the authentication bug</span>
                             </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-item flex items-center p-3 mb-2 rounded-lg cursor-pointer">
+                        <div class="relative mr-3">
+                            <div class="w-12 h-12 rounded-full bg-green-900 flex items-center justify-center">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <span class="status-indicator online absolute bottom-0 right-0"></span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-bold flex justify-between">
+                                <span>Alex Johnson</span>
+                                <span class="text-xs opacity-75">Yesterday</span>
+                            </div>
+                            <div class="text-xs opacity-75 truncate">See you at the conference tomorrow!</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-item flex items-center p-3 mb-2 rounded-lg cursor-pointer">
+                        <div class="relative mr-3">
+                            <div class="w-12 h-12 rounded-full bg-green-900 flex items-center justify-center">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <span class="status-indicator offline absolute bottom-0 right-0"></span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-bold flex justify-between">
+                                <span>Maya Rodriguez</span>
+                                <span class="text-xs opacity-75">Yesterday</span>
+                            </div>
+                            <div class="text-xs opacity-75 truncate">Thanks for your help with the project!</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-item flex items-center p-3 mb-2 rounded-lg cursor-pointer">
+                        <div class="relative mr-3">
+                            <div class="w-12 h-12 rounded-full bg-green-900 flex items-center justify-center">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <span class="status-indicator online absolute bottom-0 right-0"></span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-bold flex justify-between">
+                                <span>Design Team</span>
+                                <span class="text-xs opacity-75">Oct 12</span>
+                            </div>
+                            <div class="text-xs opacity-75 truncate">New UI designs are ready for review</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main chat area -->
+            <div class="flex-1 flex flex-col panel">
+                <!-- Chat header -->
+                <div class="p-4 border-b border-green-500 border-opacity-30 flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="relative mr-3">
+                            <div class="w-10 h-10 rounded-full bg-green-900 flex items-center justify-center">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <span class="status-indicator online absolute bottom-0 right-0"></span>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold" id="current-chat">Tech Enthusiasts</h2>
+                            <p class="text-xs opacity-75">Online - 6 participants</p>
+                        </div>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button class="btn-matrix p-2 rounded-full">
+                            <i class="fas fa-phone"></i>
+                        </button>
+                        <button class="btn-matrix p-2 rounded-full">
+                            <i class="fas fa-video"></i>
+                        </button>
+                        <button class="btn-matrix p-2 rounded-full">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Chat messages -->
+                <div class="flex-1 overflow-y-auto p-4 message-container" id="chat-messages">
+                    <!-- Date divider -->
+                    <div class="text-center my-4">
+                        <span class="bg-gray-900 px-3 py-1 rounded-full text-xs">Today</span>
+                    </div>
+                    
+                    <!-- Received message -->
+                    <div class="message received flex mb-4">
+                        <div class="mr-3">
+                            <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                                <span>AJ</span>
+                            </div>
+                        </div>
+                        <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                            <div class="font-bold text-xs mb-1">Alex Johnson</div>
+                            <div class="mb-1">Hey team, has anyone tested the new encryption module?</div>
+                            <div class="text-xs flex justify-end items-center opacity-75">
+                                <span>10:15 AM</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Sent message -->
+                    <div class="message sent flex justify-end mb-4">
+                        <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                            <div class="mb-1">I've just finished testing it. The encryption works perfectly!</div>
+                            <div class="text-xs flex justify-end items-center opacity-75">
+                                <span>10:20 AM</span>
+                                <i class="fas fa-check-double ml-1 text-green-500"></i>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                                <span>Y</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Received message -->
+                    <div class="message received flex mb-4">
+                        <div class="mr-3">
+                            <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                                <span>MR</span>
+                            </div>
+                        </div>
+                        <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                            <div class="font-bold text-xs mb-1">Maya Rodriguez</div>
+                            <div class="mb-1">That's great news! Can you share the test results?</div>
+                            <div class="text-xs flex justify-end items-center opacity-75">
+                                <span>10:22 AM</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Sent message -->
+                    <div class="message sent flex justify-end mb-4">
+                        <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                            <div class="mb-1">Sure, I'll upload them to the shared drive in a few minutes.</div>
+                            <div class="text-xs flex justify-end items-center opacity-75">
+                                <span>10:25 AM</span>
+                                <i class="fas fa-check-double ml-1 text-green-500"></i>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                                <span>Y</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Received message -->
+                    <div class="message received flex mb-4">
+                        <div class="mr-3">
+                            <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                                <span>SK</span>
+                            </div>
+                        </div>
+                        <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                            <div class="font-bold text-xs mb-1">Sarah Kim</div>
+                            <div class="mb-1">I'm looking at the implementation now. Did we consider quantum resistance in the design?</div>
+                            <div class="text-xs flex justify-end items-center opacity-75">
+                                <span>10:30 AM</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- System message -->
+                    <div class="text-center my-4">
+                        <span class="bg-gray-900 px-3 py-1 rounded-full text-xs">Now</span>
+                    </div>
+                    
+                    <!-- Typing indicator -->
+                    <div class="typing-indicator mb-4">
+                        <span id="typing-user">Sarah Kim</span> is typing
+                        <div class="typing-dots">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Chat area -->
-                <div class="flex-1 flex flex-col panel overflow-hidden">
-                    <div class="p-4 border-b border-green-500 border-opacity-30 flex justify-between items-center">
-                        <h2 class="text-xl font-bold" id="current-contact">Global Chat</h2>
-                        <div id="encryption-indicator" class="flex items-center text-sm">
-                            <div class="encrypt-animation mr-2">
-                                <i class="fas fa-lock"></i>
-                            </div>
-                            <span>Encrypted</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Chat messages -->
-                    <div class="flex-1 overflow-y-auto p-4" id="chat-messages">
-                        <div class="terminal">
-                            <div class="terminal-line">
-                                <span class="terminal-prompt">></span>
-                                <span class="terminal-text">Welcome to Sentinel-X Live Chat</span>
-                            </div>
-                            <div class="terminal-line">
-                                <span class="terminal-prompt">></span>
-                                <span class="terminal-text">Connecting to real-time server...</span>
-                            </div>
-                            <div class="terminal-line">
-                                <span class="terminal-prompt">></span>
-                                <span class="terminal-text">Your messages are end-to-end encrypted</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Message input -->
-                    <div class="p-4 border-t border-green-500 border-opacity-30 bg-gray-900 bg-opacity-50">
-                        <div class="flex gap-2">
-                            <input type="text" id="message-input" 
-                                   class="input-matrix flex-1 p-3 rounded-lg focus:outline-none"
-                                   placeholder="Type your message...">
-                            <button id="send-btn" class="btn-matrix px-6 rounded-lg">
-                                <i class="fas fa-paper-plane"></i>
-                            </button>
-                        </div>
-                        <div id="typing-indicator" class="typing-indicator hidden">
-                            <span id="typing-user">Someone</span> is typing
-                            <div class="typing-dots">
-                                <div class="typing-dot"></div>
-                                <div class="typing-dot"></div>
-                                <div class="typing-dot"></div>
-                            </div>
-                        </div>
+                <!-- Message input -->
+                <div class="p-4 border-t border-green-500 border-opacity-30 bg-gray-900 bg-opacity-50">
+                    <div class="flex gap-2">
+                        <button class="btn-matrix p-3 rounded-lg">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <input type="text" id="message-input" 
+                               class="input-matrix flex-1 p-3 rounded-lg focus:outline-none"
+                               placeholder="Type a message...">
+                        <button class="btn-matrix p-3 rounded-lg">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <button id="send-btn" class="btn-matrix px-6 rounded-lg">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -484,47 +558,11 @@
         
         <!-- Footer -->
         <footer class="mt-8 pt-6 border-t border-green-500 border-opacity-20 text-center text-sm opacity-75">
-            Sentinel-X Live Chat v1.0 | Real-Time Communication | End-to-End Encrypted
+            MatrixChat v2.0 | End-to-End Encrypted | Messages Auto-Delete in 24h | Secured with Military-grade Encryption
         </footer>
     </div>
 
     <script>
-        // App state
-        let currentUser = {
-            id: null,
-            username: '',
-            contacts: [],
-            lastActivity: new Date(),
-            typing: false
-        };
-        
-        // DOM elements
-        const authContainer = document.getElementById('auth-container');
-        const chatContainer = document.getElementById('chat-container');
-        const loginForm = document.getElementById('login-form');
-        const loginBtn = document.getElementById('login-btn');
-        const userInfo = document.getElementById('user-info');
-        const usernameDisplay = document.getElementById('username-display');
-        const connectionIndicator = document.getElementById('connection-indicator');
-        const connectionText = document.getElementById('connection-text');
-        const contactList = document.getElementById('contact-list');
-        const chatMessages = document.getElementById('chat-messages');
-        const messageInput = document.getElementById('message-input');
-        const sendBtn = document.getElementById('send-btn');
-        const currentContact = document.getElementById('current-contact');
-        const onlineCount = document.getElementById('online-count');
-        const loginStatus = document.getElementById('login-status');
-        const activeUsers = document.getElementById('active-users');
-        const messageCount = document.getElementById('message-count');
-        const typingIndicator = document.getElementById('typing-indicator');
-        const typingUser = document.getElementById('typing-user');
-        
-        // Online users and chat state
-        let onlineUsers = [];
-        let messages = [];
-        let messageCounter = 0;
-        let typingTimeout = null;
-        
         // Initialize matrix effect
         function initMatrixEffect() {
             const container = document.querySelector('.matrix-grid');
@@ -549,144 +587,62 @@
         document.addEventListener('DOMContentLoaded', function() {
             initMatrixEffect();
             setupEventListeners();
+            simulateRealTimeChat();
         });
         
         function setupEventListeners() {
-            // Login button
-            loginBtn.addEventListener('click', loginUser);
+            // Chat list items
+            const chatItems = document.querySelectorAll('.chat-item');
+            chatItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // Remove active class from all items
+                    chatItems.forEach(i => i.classList.remove('active'));
+                    // Add active class to clicked item
+                    this.classList.add('active');
+                    // Update chat header
+                    const chatName = this.querySelector('.font-bold span').textContent;
+                    document.getElementById('current-chat').textContent = chatName;
+                    // Clear and simulate new messages
+                    simulateChatMessages(chatName);
+                });
+            });
             
-            // Message sending
-            sendBtn.addEventListener('click', sendMessage);
-            messageInput.addEventListener('keypress', (e) => {
+            // Send button
+            document.getElementById('send-btn').addEventListener('click', sendMessage);
+            
+            // Message input
+            document.getElementById('message-input').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     sendMessage();
                 }
             });
-            
-            // Typing detection
-            messageInput.addEventListener('input', handleTyping);
         }
         
-        // Handle user typing
-        function handleTyping() {
-            if (!currentUser.typing) {
-                currentUser.typing = true;
-                // In a real app, you would send "user is typing" to other users
-                showTypingIndicator(currentUser.username);
-            }
-            
-            // Reset typing status after 3 seconds of inactivity
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                currentUser.typing = false;
-                hideTypingIndicator();
-            }, 3000);
-        }
-        
-        // Show typing indicator
-        function showTypingIndicator(username) {
-            typingUser.textContent = username;
-            typingIndicator.classList.remove('hidden');
-        }
-        
-        // Hide typing indicator
-        function hideTypingIndicator() {
-            typingIndicator.classList.add('hidden');
-        }
-        
-        // Login user
-        function loginUser() {
-            const username = document.getElementById('login-username').value.trim();
-            
-            if (!username) {
-                showStatus(loginStatus, 'Please enter a username', 'offline');
-                return;
-            }
-            
-            if (username.length < 3 || username.length > 20) {
-                showStatus(loginStatus, 'Username must be 3-20 characters', 'offline');
-                return;
-            }
-            
-            showStatus(loginStatus, 'Connecting to chat...', 'reconnecting');
-            
-            try {
-                // Generate unique ID for user
-                currentUser.id = 'user-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-                currentUser.username = username;
-                
-                // Show chat interface
-                setTimeout(() => {
-                    showChatInterface();
-                    loginStatus.classList.add('hidden');
-                }, 1500);
-            } catch (error) {
-                showStatus(loginStatus, 'Connection failed: ' + error.message, 'offline');
-            }
-        }
-        
-        // Show chat interface
-        function showChatInterface() {
-            authContainer.classList.add('hidden');
-            chatContainer.classList.remove('hidden');
-            
-            // Update connection status
-            connectionIndicator.className = 'status-indicator online';
-            connectionText.textContent = 'Connected';
-            
-            // Set username
-            usernameDisplay.textContent = currentUser.username;
-            userInfo.classList.remove('hidden');
-            
-            // Add system messages
-            addSystemMessage('Secure connection established');
-            addSystemMessage('End-to-end encryption is active');
-            addSystemMessage('Connected to global chat');
-            addSystemMessage(`You joined as: ${currentUser.username}`);
-            
-            // Simulate other users joining
-            setTimeout(() => {
-                addSystemMessage('AgentSmith joined the chat');
-                addSystemMessage('Neo joined the chat');
-                addSystemMessage('Trinity joined the chat');
-                addSystemMessage('Morpheus joined the chat');
-                
-                // Load online users
-                loadOnlineUsers();
-            }, 1000);
-            
-            // Simulate receiving messages
-            simulateIncomingMessages();
-        }
-        
-        // Simulate incoming messages from other users
-        function simulateIncomingMessages() {
+        // Simulate real-time chat
+        function simulateRealTimeChat() {
             setInterval(() => {
-                if (Math.random() > 0.7 && onlineUsers.length > 1) {
-                    const randomUser = onlineUsers.filter(u => u.id !== currentUser.id)[Math.floor(Math.random() * (onlineUsers.length - 1))];
+                // Randomly add new messages
+                if (Math.random() > 0.7) {
+                    const users = ['Alex Johnson', 'Maya Rodriguez', 'Sarah Kim', 'David Chen'];
+                    const randomUser = users[Math.floor(Math.random() * users.length)];
                     const messages = [
-                        "The Matrix has you...",
-                        "Follow the white rabbit",
-                        "What is real?",
-                        "There is no spoon",
-                        "I know kung fu",
-                        "Whoa...",
-                        "Human beings are a disease",
-                        "You take the blue pill, the story ends",
-                        "You take the red pill, you stay in Wonderland",
-                        "Free your mind",
-                        "Have you seen the latest security updates?",
-                        "Anyone up for a game of chess?",
-                        "I think we're being watched...",
-                        "The system is more complex than we thought",
-                        "I've discovered a vulnerability in the mainframe"
+                        "What's the status on the new API?",
+                        "I've pushed the latest changes to the repo",
+                        "Can someone review my PR?",
+                        "Meeting at 3 PM today?",
+                        "The new encryption tests passed!",
+                        "Has anyone seen the latest security report?",
+                        "I need help with the deployment",
+                        "Check out this new framework I found",
+                        "The server is down, investigating now",
+                        "Client meeting moved to tomorrow"
                     ];
                     const randomMessage = messages[Math.floor(Math.random() * messages.length)];
                     
-                    addMessage(randomMessage, false, randomUser.username);
+                    addMessage(randomMessage, false, randomUser);
                     
-                    // Simulate typing indicator
-                    showTypingIndicator(randomUser.username);
+                    // Show typing indicator
+                    showTypingIndicator(randomUser);
                     setTimeout(() => {
                         hideTypingIndicator();
                     }, 2000);
@@ -694,179 +650,120 @@
             }, 8000);
         }
         
-        // Load online users
-        function loadOnlineUsers() {
-            // Simulated online users
-            onlineUsers = [
-                { id: 'user-123', username: 'AgentSmith', online: true },
-                { id: 'user-456', username: 'Neo', online: true },
-                { id: 'user-789', username: 'Trinity', online: true },
-                { id: 'user-101', username: 'Morpheus', online: true },
-                { id: currentUser.id, username: currentUser.username, online: true }
-            ];
-            
-            // Update online count
-            const onlineContacts = onlineUsers.filter(u => u.online).length;
-            onlineCount.textContent = `${onlineContacts} online`;
-            activeUsers.textContent = onlineContacts;
-            
-            // Render users
-            contactList.innerHTML = '';
-            onlineUsers.forEach(user => {
-                const userEl = document.createElement('div');
-                userEl.className = 'contact-item flex items-center';
-                userEl.dataset.userId = user.id;
-                userEl.innerHTML = `
-                    <div class="user-avatar">${user.username.charAt(0)}</div>
-                    <div class="flex-1">
-                        <div class="font-bold">${user.username}</div>
-                        <div class="text-xs flex items-center opacity-75">
-                            <span class="status-indicator ${user.online ? 'online' : 'offline'}"></span>
-                            ${user.online ? 'Online - Active' : 'Offline'}
+        // Simulate chat messages when switching chats
+        function simulateChatMessages(chatName) {
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML = `
+                <div class="text-center my-4">
+                    <span class="bg-gray-900 px-3 py-1 rounded-full text-xs">Today</span>
+                </div>
+                <div class="message received flex mb-4">
+                    <div class="mr-3">
+                        <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                            <span>${chatName.charAt(0)}</span>
                         </div>
                     </div>
-                `;
-                
-                contactList.appendChild(userEl);
-            });
-        }
-        
-        // Add system message
-        function addSystemMessage(text) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'terminal-line mb-4 animate-fadeIn';
-            messageDiv.innerHTML = `
-                <span class="terminal-prompt">></span>
-                <span class="terminal-text">${text}</span>
-            `;
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-        
-        // Add message to chat
-        function addMessage(content, isSent = true, senderName) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message flex mb-4 animate-fadeIn ${isSent ? 'sent justify-end' : 'received justify-start'}`;
-            
-            const now = new Date();
-            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-            
-            messageDiv.innerHTML = `
-                <div class="max-w-xs md:max-w-md rounded-lg p-4">
-                    <div class="flex justify-between text-xs opacity-75 mb-1">
-                        <span>${isSent ? 'You' : senderName}</span>
-                        <span>${timeString}</span>
-                    </div>
-                    <div class="mb-1">${content}</div>
-                    <div class="text-xs flex items-center opacity-75">
-                        <i class="fas ${isSent ? 'fa-check-circle' : 'fa-lock'} mr-1"></i>
-                        <span>${isSent ? 'Delivered' : 'Encrypted'}</span>
+                    <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                        <div class="font-bold text-xs mb-1">${chatName}</div>
+                        <div class="mb-1">Welcome to the ${chatName} chat!</div>
+                        <div class="text-xs flex justify-end items-center opacity-75">
+                            <span>Just now</span>
+                        </div>
                     </div>
                 </div>
             `;
             
+            // Show typing indicator
+            setTimeout(() => {
+                showTypingIndicator(chatName);
+                setTimeout(() => {
+                    hideTypingIndicator();
+                    addMessage("This is a secure, end-to-end encrypted chat channel. All messages are protected with military-grade encryption.", false, chatName);
+                }, 2000);
+            }, 1000);
+        }
+        
+        // Show typing indicator
+        function showTypingIndicator(username) {
+            const typingIndicator = document.querySelector('.typing-indicator');
+            document.getElementById('typing-user').textContent = username;
+            typingIndicator.classList.remove('hidden');
+        }
+        
+        // Hide typing indicator
+        function hideTypingIndicator() {
+            const typingIndicator = document.querySelector('.typing-indicator');
+            typingIndicator.classList.add('hidden');
+        }
+        
+        // Add message to chat
+        function addMessage(content, isSent = true, senderName) {
+            const chatMessages = document.getElementById('chat-messages');
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message flex mb-4 ${isSent ? 'sent justify-end' : 'received'}`;
+            messageDiv.innerHTML = `
+                ${!isSent ? `
+                <div class="mr-3">
+                    <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                        <span>${senderName.charAt(0)}</span>
+                    </div>
+                </div>
+                ` : ''}
+                <div class="max-w-xs md:max-w-md rounded-lg p-4">
+                    ${!isSent ? `<div class="font-bold text-xs mb-1">${senderName}</div>` : ''}
+                    <div class="mb-1">${content}</div>
+                    <div class="text-xs flex justify-end items-center opacity-75">
+                        <span>${timeString}</span>
+                        ${isSent ? `<i class="fas fa-check-double ml-1 text-green-500"></i>` : ''}
+                    </div>
+                </div>
+                ${isSent ? `
+                <div class="ml-3">
+                    <div class="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center">
+                        <span>Y</span>
+                    </div>
+                </div>
+                ` : ''}
+            `;
+            
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            // Update message counter
-            if (isSent) {
-                messageCounter++;
-                messageCount.textContent = messageCounter;
-            }
         }
         
         // Send message
         function sendMessage() {
+            const messageInput = document.getElementById('message-input');
             const message = messageInput.value.trim();
             if (!message) return;
             
             // Add to UI
-            addMessage(message, true, currentUser.username);
+            addMessage(message, true, 'You');
             
-            // In a real app, you would send the message to the server
-            // For this demo, we'll simulate responses
-            simulateResponse(message);
-            
-            // Clear input and reset typing
+            // Clear input
             messageInput.value = '';
-            currentUser.typing = false;
-            hideTypingIndicator();
-        }
-        
-        // Simulate responses
-        function simulateResponse(message) {
-            // Only respond to certain keywords
-            const responses = {
-                "hello": `Hello ${currentUser.username}, welcome to the Matrix!`,
-                "hi": `Hi ${currentUser.username}, how can I assist you?`,
-                "help": "I can help you navigate the Matrix. What do you need?",
-                "matrix": "The Matrix is everywhere, it is all around us.",
-                "red pill": "Remember, all I'm offering is the truth. Nothing more.",
-                "blue pill": "You wake up in your bed and believe whatever you want to believe.",
-                "neo": "He is the One, you've seen him for yourself.",
-                "trinity": "She is the best hacker in the Matrix.",
-                "morpheus": "He will show you the path, if you're ready.",
-                "agent": "They are the guardians of the system, be careful.",
-                "hack": "To hack the system, you must first understand it.",
-                "security": "Our encryption protocols are military-grade.",
-                "chat": "This is a secure global chat room for all sentinels."
-            };
             
-            let response = null;
-            const lowerMsg = message.toLowerCase();
-            
-            for (const [key, value] of Object.entries(responses)) {
-                if (lowerMsg.includes(key)) {
-                    response = value;
-                    break;
-                }
-            }
-            
-            if (!response) {
-                // Random response if no keyword matched
-                const randomResponses = [
-                    "I'm listening...",
-                    "That's interesting, tell me more",
-                    "The Matrix has you...",
-                    "You have to see it for yourself to believe",
-                    "What do you mean by that?",
-                    "I understand what you're saying",
-                    "That's a profound observation",
-                    "We're all connected in the Matrix",
-                    "Have you considered the implications?",
-                    "That raises an important question",
-                    "I've been analyzing that concept",
-                    "Let's discuss this further"
+            // Simulate response
+            setTimeout(() => {
+                const activeChat = document.querySelector('.chat-item.active .font-bold span').textContent;
+                const responses = [
+                    "Thanks for the update!",
+                    "I'll look into that right away",
+                    "Can you share more details?",
+                    "That makes sense, let's discuss in the meeting",
+                    "Great work!",
+                    "I have a question about that...",
+                    "Let me check and get back to you",
+                    "I've added that to the task list",
+                    "Can we schedule a call to discuss?",
+                    "I'll test this on my end"
                 ];
-                response = randomResponses[Math.floor(Math.random() * randomResponses.length)];
-            }
-            
-            // Randomly choose a user to respond
-            const users = onlineUsers.filter(u => u.id !== currentUser.id);
-            if (users.length > 0) {
-                const randomUser = users[Math.floor(Math.random() * users.length)];
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
                 
-                // Simulate typing before response
-                showTypingIndicator(randomUser.username);
-                
-                setTimeout(() => {
-                    hideTypingIndicator();
-                    addMessage(response, false, randomUser.username);
-                }, 2000);
-            }
-        }
-        
-        // Show status message
-        function showStatus(element, message, status) {
-            element.classList.remove('hidden');
-            element.querySelector('span:last-child').textContent = message;
-            
-            // Update status indicator
-            const indicator = element.querySelector('.status-indicator');
-            indicator.className = 'status-indicator ' + status;
-            
-            // Update status class
-            element.className = 'connection-status ' + status + '-status mb-4';
+                addMessage(randomResponse, false, activeChat);
+            }, 1000 + Math.random() * 2000);
         }
     </script>
 </body>
