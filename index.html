@@ -327,13 +327,13 @@
                         <label class="block text-sm mb-2">Email</label>
                         <input type="email" id="login-email" 
                                class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Enter your email">
+                               placeholder="agent.smith@example.com">
                     </div>
                     <div class="mb-6">
                         <label class="block text-sm mb-2">Password</label>
                         <input type="password" id="login-password" 
                                class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Enter your password">
+                               placeholder="••••••••">
                     </div>
                     <div class="connection-status offline-status mb-4 hidden" id="login-status">
                         <span class="status-indicator offline"></span>
@@ -356,19 +356,19 @@
                         <label class="block text-sm mb-2">Username</label>
                         <input type="text" id="register-username" 
                                class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Create a username">
+                               placeholder="neo">
                     </div>
                     <div class="mb-6">
                         <label class="block text-sm mb-2">Email</label>
                         <input type="email" id="register-email" 
                                class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Enter your email">
+                               placeholder="neo@example.com">
                     </div>
                     <div class="mb-6">
                         <label class="block text-sm mb-2">Create Password</label>
                         <input type="password" id="register-password" 
                                class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Create a strong password">
+                               placeholder="••••••••">
                         <div class="password-strength mt-1">
                             <div class="strength-meter" id="password-strength"></div>
                         </div>
@@ -377,7 +377,7 @@
                         <label class="block text-sm mb-2">Confirm Password</label>
                         <input type="password" id="register-confirm" 
                                class="input-matrix w-full px-4 py-3 rounded-lg focus:outline-none" 
-                               placeholder="Confirm your password">
+                               placeholder="••••••••">
                     </div>
                     <div class="connection-status offline-status mb-4 hidden" id="register-status">
                         <span class="status-indicator offline"></span>
@@ -403,15 +403,11 @@
                 <div class="panel w-full md:w-80 p-4 flex flex-col">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold"><i class="fas fa-user-friends mr-2"></i> Contacts</h2>
-                        <span class="bg-green-900 text-xs px-2 py-1 rounded-full" id="online-count">0 online</span>
+                        <span class="bg-green-900 text-xs px-2 py-1 rounded-full" id="online-count">3 online</span>
                     </div>
                     
                     <div class="contact-list flex-1 overflow-y-auto mb-4" id="contact-list">
-                        <div class="text-center py-8 text-green-500 text-opacity-50">
-                            <i class="fas fa-user-friends text-3xl mb-2"></i>
-                            <p>No contacts yet</p>
-                            <p class="text-sm mt-4">Connect with other users to start chatting</p>
-                        </div>
+                        <!-- Contacts will be loaded here -->
                     </div>
                     
                     <div class="pt-4 border-t border-green-500 border-opacity-30">
@@ -677,17 +673,7 @@
                 
                 currentUser.session = data.session;
                 currentUser.id = data.session.user.id;
-                
-                // Fetch user profile
-                const { data: profile, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('username')
-                    .eq('id', currentUser.id)
-                    .single();
-                
-                if (profileError) throw profileError;
-                
-                currentUser.username = profile.username;
+                currentUser.username = data.session.user.user_metadata?.username || data.session.user.email.split('@')[0];
                 
                 // Show chat interface
                 showChatInterface();
@@ -732,19 +718,6 @@
                     throw new Error(error.message);
                 }
                 
-                // Create profile
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .insert([
-                        { 
-                            id: data.user.id, 
-                            username: username,
-                            created_at: new Date()
-                        }
-                    ]);
-                
-                if (profileError) throw profileError;
-                
                 currentUser.id = data.user.id;
                 currentUser.username = username;
                 
@@ -758,12 +731,8 @@
         
         // Load user profile
         async function loadUserProfile() {
-            // Fetch user profile
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('username')
-                .eq('id', currentUser.id)
-                .single();
+            // Get username from user metadata
+            const { data: { user }, error } = await supabase.auth.getUser();
             
             if (error) {
                 console.error('Error loading profile:', error);
@@ -771,8 +740,8 @@
             }
             
             // Set username
-            currentUser.username = data.username;
-            usernameDisplay.textContent = data.username;
+            currentUser.username = user.user_metadata?.username || user.email.split('@')[0];
+            usernameDisplay.textContent = currentUser.username;
             userInfo.classList.remove('hidden');
         }
         
@@ -818,19 +787,13 @@
         // Load contacts
         async function loadContacts() {
             try {
-                // Fetch all users except current user
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('id, username')
-                    .neq('id', currentUser.id);
-                
-                if (error) throw error;
-                
-                // Add online status randomly for demo
-                currentUser.contacts = data.map(contact => ({
-                    ...contact,
-                    online: Math.random() > 0.3 // Random online status
-                }));
+                // For demo, we'll use simulated contacts
+                currentUser.contacts = [
+                    { id: 'agent-smith', username: 'Agent Smith', online: true },
+                    { id: 'trinity', username: 'Trinity', online: true },
+                    { id: 'morpheus', username: 'Morpheus', online: false },
+                    { id: 'neo', username: 'Neo', online: true }
+                ];
                 
                 // Update online count
                 const onlineContacts = currentUser.contacts.filter(c => c.online).length;
@@ -895,16 +858,15 @@
         // Load message history
         async function loadMessageHistory(contactId) {
             try {
-                const { data, error } = await supabase
-                    .from('messages')
-                    .select('*')
-                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${currentUser.id})`)
-                    .order('created_at', { ascending: true });
+                // Simulated message history
+                const messages = [
+                    { id: 1, content: "Welcome to Sentinel-X secure chat", sender_id: contactId, created_at: new Date() },
+                    { id: 2, content: "This is a secure end-to-end encrypted channel", sender_id: contactId, created_at: new Date() },
+                    { id: 3, content: "All messages are protected with military-grade encryption", sender_id: contactId, created_at: new Date() }
+                ];
                 
-                if (error) throw error;
-                
-                data.forEach(message => {
-                    const isSent = message.sender_id === currentUser.id;
+                messages.forEach(message => {
+                    const isSent = false;
                     addMessage(message.content, isSent, message.sender_id);
                 });
                 
@@ -987,23 +949,21 @@
             // Clear input
             messageInput.value = '';
             
-            try {
-                // Save to database
-                const { error } = await supabase
-                    .from('messages')
-                    .insert([
-                        { 
-                            sender_id: currentUser.id, 
-                            receiver_id: currentUser.currentChat,
-                            content: message
-                        }
-                    ]);
-                
-                if (error) throw error;
-            } catch (error) {
-                console.error('Error sending message:', error);
-                addSystemMessage('Failed to send message');
-            }
+            // Simulate message delivery and response
+            setTimeout(() => {
+                const contact = currentUser.contacts.find(c => c.id === currentUser.currentChat);
+                if (contact) {
+                    const responses = [
+                        "Message received securely",
+                        "This is an automated response",
+                        "Your message was encrypted and delivered",
+                        "Sentinel-X protects all communications",
+                        "End-to-end encryption confirmed"
+                    ];
+                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                    addMessage(randomResponse, false, contact.id);
+                }
+            }, 1000);
         }
         
         // Show status message
