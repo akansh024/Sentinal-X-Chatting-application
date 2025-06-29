@@ -13,14 +13,14 @@ const { createTerminus } = require('@godaddy/terminus');
 const authRoutes = require('./routes/auth.routes');
 const chatRoutes = require('./routes/chat.routes');
 const { initializeSocket } = require('./socket/chat.socket');
-const errorHandler = require('./middlewares/error.middleware');
+const errorHandler = require('./middleware/error.middleware');
 
 const app = express();
 const server = http.createServer(app);
 
 // Validate environment variables
 if (!process.env.JWT_SECRET || !process.env.MONGO_URI) {
-  console.error('❌ Fatal Error: Missing required environment variables');
+  console.error('Fatal Error: Missing required environment variables');
   process.exit(1);
 }
 
@@ -38,7 +38,7 @@ const io = socketio(server, {
 
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable for simplicity, configure properly in production
+  contentSecurityPolicy: false,
   hsts: { maxAge: 31536000, includeSubDomains: true },
   referrerPolicy: { policy: 'same-origin' }
 }));
@@ -70,9 +70,9 @@ mongoose.connect(process.env.MONGO_URI, {
   useUnifiedTopology: true,
   serverSelectionTimeoutMS: 5000
 }).then(() => {
-  console.log('✅ Connected to MongoDB');
+  console.log('Connected to MongoDB');
 }).catch(err => {
-  console.error('❌ MongoDB connection error:', err.message);
+  console.error('MongoDB connection error:', err.message);
   process.exit(1);
 });
 
@@ -90,7 +90,7 @@ app.get('/health', (req, res) => {
 
 // Default route
 app.get('/', (req, res) => {
-  res.send(`${process.env.APP_NAME || 'Chat'} API is running`);
+  res.send(`${process.env.APP_NAME || 'Sentinal-X'} API is running`);
 });
 
 // Initialize Socket.IO
@@ -104,20 +104,20 @@ createTerminus(server, {
   signals: ['SIGINT', 'SIGTERM'],
   timeout: 10000,
   onSignal: () => {
-    console.log('🛑 Server is starting cleanup');
+    console.log('Server is starting cleanup');
     return Promise.all([
       mongoose.disconnect(),
       new Promise(resolve => io.close(resolve))
     ]);
   },
-  onShutdown: () => console.log('🛑 Cleanup finished. Server is shutting down')
+  onShutdown: () => console.log('Cleanup finished. Server is shutting down')
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔗 MongoDB: ${process.env.MONGO_URI}`);
-  console.log(`🔒 JWT Expiry: ${process.env.TOKEN_EXPIRY || '7d'}`);
-  console.log(`🏷️ App Name: ${process.env.APP_NAME || 'MatrixChat'}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`MongoDB URI: ${process.env.MONGO_URI}`);
+  console.log(`JWT Expiry: ${process.env.TOKEN_EXPIRY || '7d'}`);
+  console.log(`App Name: ${process.env.APP_NAME || 'Sentinal-X'}`);
 });
